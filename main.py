@@ -403,7 +403,7 @@ I'm a feature-rich Telegram bot with:
 . - Developer commands (bot developers only)
 # - Public commands (everyone can use)
 
-**Support:** @VanZoel112
+**Support:** @VZLfxs
 """
         await message.reply(welcome_text)
 
@@ -432,7 +432,7 @@ I'm a feature-rich Telegram bot with:
 • yt-dlp
 • AsyncIO
 
-**Contact:** @VanZoel112
+**Contact:** @VZLfxs
 
 Made with ❤️ by Vzoel Fox
 """
@@ -480,7 +480,7 @@ Made with ❤️ by Vzoel Fox
 . = Developer commands (bot devs only)
 # = Public commands (everyone)
 
-**🔧 Support:** @VanZoel112
+**🔧 Support:** @VZLfxs
 """
         await message.reply(help_text)
 
