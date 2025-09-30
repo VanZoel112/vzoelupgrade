@@ -12,27 +12,27 @@ Version: 2.0.0 Python
 # ==============================================
 
 # Get your bot token from @BotFather
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "8417614653:AAH2qRNOv2v2cAYrxbiVvI6woaf9WZxVEBE"
 
-# Your Telegram API credentials (hardcoded - no need to change)
-API_ID = 28830134
-API_HASH = "4d3d3aa37e7e6df41439319e0767e9ab"
+# Your Telegram API credentials (from vzl2 - no need to change)
+API_ID = 29919905
+API_HASH = "717957f0e3ae20a7db004d08b66bfd30"
 
 # ==============================================
 # USER AUTHORIZATION
 # ==============================================
 
 # Your Telegram User ID (owner)
-OWNER_ID = 0  # Change this to your user ID
+OWNER_ID = 8024282347  # VanZoel112
 
 # Developer IDs (can use . prefix commands)
 DEVELOPER_IDS = [
-    0,  # Add your developer IDs here
+    8024282347,  # VanZoel112
 ]
 
 # Admin chat IDs (can use / prefix commands)
 ADMIN_CHAT_IDS = [
-    0,  # Add your group/channel IDs here
+    # Add your group/channel IDs here
 ]
 
 # ==============================================
