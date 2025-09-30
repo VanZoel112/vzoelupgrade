@@ -107,5 +107,5 @@ class PrivacyManager:
         return {
             'silent_chats': len(self.silent_chats),
             'private_commands': len(self.private_commands),
-            'privacy_enabled': self.config.enable_privacy_system
+            'privacy_enabled': config.ENABLE_PRIVACY_SYSTEM
         }

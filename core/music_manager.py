@@ -90,8 +90,8 @@ class MusicManager:
         # Rate limiting check
         current_time = time.time()
         if user_id in self.last_download:
-            if current_time - self.last_download[user_id] < self.config.music_cooldown:
-                raise Exception(f"Rate limited. Wait {self.config.music_cooldown} seconds between downloads.")
+            if current_time - self.last_download[user_id] < config.MUSIC_COOLDOWN:
+                raise Exception(f"Rate limited. Wait {config.MUSIC_COOLDOWN} seconds between downloads.")
 
         try:
             # Check cache first
@@ -103,7 +103,7 @@ class MusicManager:
             # Download options
             output_template = str(self.download_path / "%(title)s.%(ext)s")
             ydl_opts = {
-                'format': self.config.music.audio_quality,
+                'format': config.AUDIO_QUALITY,
                 'outtmpl': output_template,
                 'noplaylist': True,
                 'extractaudio': True,
@@ -119,8 +119,8 @@ class MusicManager:
 
                 # Check file size
                 filesize = info.get('filesize') or info.get('filesize_approx', 0)
-                if filesize > self.config.music.max_file_size:
-                    raise Exception(f"File too large: {filesize} bytes (max: {self.config.music.max_file_size})")
+                if filesize > config.MAX_FILE_SIZE:
+                    raise Exception(f"File too large: {filesize} bytes (max: {config.MAX_FILE_SIZE})")
 
                 # Download
                 ydl.download([url])

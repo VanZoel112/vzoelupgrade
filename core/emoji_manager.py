@@ -54,7 +54,7 @@ class EmojiManager:
 
     def convert_to_premium_emoji(self, text: str, use_premium: bool = True) -> str:
         """Convert standard emojis to premium emojis in text"""
-        if not use_premium or not self.config.enable_premium_emoji:
+        if not use_premium or not config.ENABLE_PREMIUM_EMOJI:
             return text
 
         converted_text = text
@@ -65,7 +65,7 @@ class EmojiManager:
 
     async def process_message_emojis(self, client, message_text: str, user_id: int) -> str:
         """Process message emojis based on user's premium status"""
-        if not self.config.enable_premium_emoji:
+        if not config.ENABLE_PREMIUM_EMOJI:
             return message_text
 
         try:

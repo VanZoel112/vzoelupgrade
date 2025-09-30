@@ -136,7 +136,7 @@ class TagManager:
                 session['tagged_count'] += len(batch_members)
 
                 # Delay between edits
-                await asyncio.sleep(self.config.tag_delay)
+                await asyncio.sleep(config.TAG_DELAY)
 
             # Final message
             final_text = f"{base_message}\n\n✅ Tagged all {len(members)} members!"

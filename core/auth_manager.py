@@ -94,11 +94,11 @@ class AuthManager:
 
     def get_command_type(self, message_text: str) -> Optional[str]:
         """Determine command type based on prefix"""
-        if message_text.startswith(self.config.command_prefix_dev):
+        if message_text.startswith(config.PREFIX_DEV):
             return "developer"
-        elif message_text.startswith(self.config.command_prefix_admin):
+        elif message_text.startswith(config.PREFIX_ADMIN):
             return "admin"
-        elif message_text.startswith(self.config.command_prefix_public):
+        elif message_text.startswith(config.PREFIX_PUBLIC):
             return "public"
         return None
 
