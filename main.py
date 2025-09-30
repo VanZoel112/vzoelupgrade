@@ -413,17 +413,17 @@ I'm a feature-rich Telegram bot with:
 ℹ️ **About VBot Python**
 
 **Version:** 2.0.0 Python
-**Author:** VanZoel112
-**Repository:** github.com/VanZoel112/vzoelupgrade
+**Developer:** Vzoel Fox
+**Built with:** Python & Telethon
 
 **Features:**
-✅ Music System (yt-dlp)
+✅ Music System (YouTube)
 ✅ Lock/Unlock System
 ✅ Tag All Members
 ✅ Welcome System
 ✅ Premium Emoji Support
-✅ GitHub Auto-Sync
-✅ Privacy System
+✅ Auto Backup System
+✅ Privacy Mode
 ✅ Multi-level Permissions
 
 **Tech Stack:**
@@ -432,8 +432,7 @@ I'm a feature-rich Telegram bot with:
 • yt-dlp
 • AsyncIO
 
-**License:** MIT
-**Support:** @VanZoel112
+**Contact:** @VanZoel112
 
 Made with ❤️ by Vzoel Fox
 """
