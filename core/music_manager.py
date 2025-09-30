@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
 """
-Music Manager with yt-dlp Integration
-Handles music download, playback controls, and inline keyboards
+Music Manager with Streaming Support (PyTgCalls)
+Real-time audio streaming to Telegram Voice Chat
 
 Author: VanZoel112
-Version: 2.0.0 Python
+Version: 2.0.0 Python (Streaming)
 """
 
 import asyncio
 import logging
 import os
-import json
 import time
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 from pathlib import Path
-import aiohttp
-import aiofiles
-from telethon import Button
 import config
 
 logger = logging.getLogger(__name__)
@@ -26,302 +22,290 @@ try:
     YTDLP_AVAILABLE = True
 except ImportError:
     YTDLP_AVAILABLE = False
-    logger.warning("yt-dlp not available, music features will be limited")
+    logger.warning("yt-dlp not available")
+
+try:
+    from pytgcalls import PyTgCalls
+    from pytgcalls.types import MediaStream, AudioQuality
+    from pytgcalls.exceptions import GroupCallNotFound, AlreadyJoinedError
+    PYTGCALLS_AVAILABLE = True
+except ImportError:
+    PYTGCALLS_AVAILABLE = False
+    logger.warning("PyTgCalls not available - voice chat features disabled")
 
 class MusicManager:
-    """Manages music download and playback using yt-dlp"""
+    """Manages music streaming to Telegram Voice Chat"""
 
-    def __init__(self):
-        self.download_path = Path(config.DOWNLOAD_PATH)
-        self.download_path.mkdir(exist_ok=True)
+    def __init__(self, client):
+        self.client = client
+        self.pytgcalls = None
 
-        # Current playback state per chat
-        self.playback_state: Dict[int, Dict] = {}
-
-        # Download cache
-        self.download_cache: Dict[str, str] = {}
+        # Streaming state per chat
+        self.streams: Dict[int, Dict] = {}  # chat_id -> stream info
+        self.queues: Dict[int, List] = {}  # chat_id -> song queue
 
         # Rate limiting
-        self.last_download: Dict[int, float] = {}
+        self.last_request: Dict[int, float] = {}
 
-    async def search_music(self, query: str, max_results: int = 5) -> List[Dict]:
-        """Search for music using yt-dlp"""
-        if not YTDLP_AVAILABLE:
-            return []
+        if PYTGCALLS_AVAILABLE:
+            try:
+                # Initialize PyTgCalls
+                self.pytgcalls = PyTgCalls(client)
+                logger.info("PyTgCalls initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize PyTgCalls: {e}")
+                PYTGCALLS_AVAILABLE = False
 
-        try:
-            ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'extract_flat': True,
-                'default_search': 'ytsearch',
-            }
+    async def start(self):
+        """Start PyTgCalls client"""
+        if self.pytgcalls and PYTGCALLS_AVAILABLE:
+            try:
+                await self.pytgcalls.start()
+                logger.info("PyTgCalls started")
+            except Exception as e:
+                logger.error(f"Failed to start PyTgCalls: {e}")
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                search_results = ydl.extract_info(
-                    f"ytsearch{max_results}:{query}",
-                    download=False
-                )
+    async def stop(self):
+        """Stop PyTgCalls client"""
+        if self.pytgcalls:
+            try:
+                # Leave all active voice chats
+                for chat_id in list(self.streams.keys()):
+                    await self.leave_voice_chat(chat_id)
+                logger.info("PyTgCalls stopped")
+            except Exception as e:
+                logger.error(f"Error stopping PyTgCalls: {e}")
 
-            results = []
-            if search_results and 'entries' in search_results:
-                for entry in search_results['entries']:
-                    if entry:
-                        results.append({
-                            'id': entry.get('id', ''),
-                            'title': entry.get('title', 'Unknown'),
-                            'url': entry.get('url', ''),
-                            'duration': entry.get('duration', 0),
-                            'uploader': entry.get('uploader', 'Unknown'),
-                            'view_count': entry.get('view_count', 0)
-                        })
-
-            return results
-
-        except Exception as e:
-            logger.error(f"Error searching music: {e}")
-            return []
-
-    async def download_audio(self, url: str, user_id: int) -> Optional[Dict]:
-        """Download audio from URL"""
+    async def search_song(self, query: str) -> Optional[Dict]:
+        """Search for song on YouTube"""
         if not YTDLP_AVAILABLE:
             return None
 
-        # Rate limiting check
-        current_time = time.time()
-        if user_id in self.last_download:
-            if current_time - self.last_download[user_id] < config.MUSIC_COOLDOWN:
-                raise Exception(f"Rate limited. Wait {config.MUSIC_COOLDOWN} seconds between downloads.")
-
         try:
-            # Check cache first
-            if url in self.download_cache:
-                file_path = self.download_cache[url]
-                if os.path.exists(file_path):
-                    return {"file_path": file_path, "cached": True}
-
-            # Download options
-            output_template = str(self.download_path / "%(title)s.%(ext)s")
             ydl_opts = {
-                'format': config.AUDIO_QUALITY,
-                'outtmpl': output_template,
+                'format': 'bestaudio/best',
                 'noplaylist': True,
-                'extractaudio': True,
-                'audioformat': 'mp3',
-                'audioquality': '192K',
                 'quiet': True,
                 'no_warnings': True,
+                'extract_flat': False,
             }
 
-            # Add cookies support to bypass YouTube bot detection
+            # Add cookies if configured
             if config.YOUTUBE_COOKIES_FROM_BROWSER:
                 ydl_opts['cookiesfrombrowser'] = (config.YOUTUBE_COOKIES_FROM_BROWSER,)
-                logger.info(f"Using cookies from browser: {config.YOUTUBE_COOKIES_FROM_BROWSER}")
             elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
                 ydl_opts['cookiefile'] = config.YOUTUBE_COOKIES_FILE
-                logger.info(f"Using cookies from file: {config.YOUTUBE_COOKIES_FILE}")
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Extract info first
-                info = ydl.extract_info(url, download=False)
+                # Search YouTube
+                search_query = f"ytsearch:{query}" if not query.startswith('http') else query
+                info = ydl.extract_info(search_query, download=False)
 
-                # Check file size
-                filesize = info.get('filesize') or info.get('filesize_approx', 0)
-                if filesize > config.MAX_FILE_SIZE:
-                    raise Exception(f"File too large: {filesize} bytes (max: {config.MAX_FILE_SIZE})")
+                if 'entries' in info:
+                    # Take first result from search
+                    info = info['entries'][0]
 
-                # Download
-                ydl.download([url])
+                return {
+                    'title': info.get('title', 'Unknown'),
+                    'url': info.get('url'),
+                    'webpage_url': info.get('webpage_url'),
+                    'duration': info.get('duration', 0),
+                    'thumbnail': info.get('thumbnail'),
+                }
 
-                # Find downloaded file
-                title = info.get('title', 'audio')
-                possible_files = list(self.download_path.glob(f"{title}.*"))
-
-                if possible_files:
-                    downloaded_file = str(possible_files[0])
-
-                    # Update cache and rate limiting
-                    self.download_cache[url] = downloaded_file
-                    self.last_download[user_id] = current_time
-
-                    return {
-                        "file_path": downloaded_file,
-                        "title": title,
-                        "duration": info.get('duration', 0),
-                        "uploader": info.get('uploader', 'Unknown'),
-                        "cached": False
-                    }
-
+        except Exception as e:
+            logger.error(f"Error searching song: {e}")
             return None
 
-        except Exception as e:
-            logger.error(f"Error downloading audio: {e}")
-            raise
+    async def play_stream(self, chat_id: int, query: str, requester_id: int) -> Dict:
+        """Play audio stream in voice chat"""
+        if not PYTGCALLS_AVAILABLE:
+            return {'success': False, 'error': 'PyTgCalls not available'}
 
-    def create_music_keyboard(self, chat_id: int, song_id: str) -> List[List[Button]]:
-        """Create inline keyboard for music controls"""
-        state = self.playback_state.get(chat_id, {})
-        is_playing = state.get('playing', False)
+        # Rate limiting
+        current_time = time.time()
+        if requester_id in self.last_request:
+            if current_time - self.last_request[requester_id] < config.MUSIC_COOLDOWN:
+                return {
+                    'success': False,
+                    'error': f"Please wait {config.MUSIC_COOLDOWN} seconds between requests"
+                }
 
-        keyboard = [
-            [
-                Button.inline("⏮️", f"music_prev_{chat_id}_{song_id}"),
-                Button.inline("⏸️" if is_playing else "▶️", f"music_play_{chat_id}_{song_id}"),
-                Button.inline("⏭️", f"music_next_{chat_id}_{song_id}")
-            ],
-            [
-                Button.inline("🔊", f"music_volume_{chat_id}_{song_id}"),
-                Button.inline("🔄", f"music_repeat_{chat_id}_{song_id}"),
-                Button.inline("❌", f"music_stop_{chat_id}_{song_id}")
-            ]
-        ]
-
-        return keyboard
-
-    async def handle_music_callback(self, client, event):
-        """Handle music control callbacks"""
-        data = event.data.decode('utf-8')
-        parts = data.split('_')
-
-        if len(parts) < 4:
-            return
-
-        action = parts[1]
-        chat_id = int(parts[2])
-        song_id = parts[3]
+        self.last_request[requester_id] = current_time
 
         try:
-            if action == "play":
-                await self.toggle_playback(chat_id, song_id)
-            elif action == "prev":
-                await self.previous_track(chat_id)
-            elif action == "next":
-                await self.next_track(chat_id)
-            elif action == "stop":
-                await self.stop_playback(chat_id)
-            elif action == "volume":
-                await self.show_volume_controls(event)
-            elif action == "repeat":
-                await self.toggle_repeat(chat_id)
+            # Search for song
+            song_info = await self.search_song(query)
+            if not song_info:
+                return {'success': False, 'error': 'Song not found'}
 
-            # Update keyboard
-            new_keyboard = self.create_music_keyboard(chat_id, song_id)
-            await event.edit(buttons=new_keyboard)
+            # Check if already in voice chat
+            is_active = chat_id in self.streams and self.streams[chat_id].get('active')
+
+            if is_active:
+                # Add to queue
+                if chat_id not in self.queues:
+                    self.queues[chat_id] = []
+                self.queues[chat_id].append(song_info)
+                return {
+                    'success': True,
+                    'queued': True,
+                    'position': len(self.queues[chat_id]),
+                    'song': song_info
+                }
+
+            # Join voice chat and play
+            try:
+                await self.pytgcalls.play(
+                    chat_id,
+                    MediaStream(
+                        song_info['url'],
+                        audio_parameters=AudioQuality.HIGH
+                    )
+                )
+
+                self.streams[chat_id] = {
+                    'active': True,
+                    'song': song_info,
+                    'requester': requester_id,
+                    'start_time': time.time()
+                }
+
+                # Start monitoring for empty VC
+                asyncio.create_task(self._monitor_voice_chat(chat_id))
+
+                return {'success': True, 'song': song_info, 'joined': True}
+
+            except AlreadyJoinedError:
+                # Already in VC, just play
+                await self.pytgcalls.play(
+                    chat_id,
+                    MediaStream(song_info['url'])
+                )
+                self.streams[chat_id] = {
+                    'active': True,
+                    'song': song_info,
+                    'requester': requester_id
+                }
+                return {'success': True, 'song': song_info}
 
         except Exception as e:
-            logger.error(f"Error handling music callback: {e}")
-            await event.answer("Error processing music control", alert=True)
+            logger.error(f"Error playing stream: {e}")
+            return {'success': False, 'error': str(e)}
 
-    async def toggle_playback(self, chat_id: int, song_id: str):
-        """Toggle play/pause"""
-        if chat_id not in self.playback_state:
-            self.playback_state[chat_id] = {'playing': False, 'current_song': song_id}
-
-        state = self.playback_state[chat_id]
-        state['playing'] = not state.get('playing', False)
-        state['current_song'] = song_id
-
-        logger.info(f"Toggled playback for chat {chat_id}: {'playing' if state['playing'] else 'paused'}")
-
-    async def previous_track(self, chat_id: int):
-        """Go to previous track"""
-        state = self.playback_state.get(chat_id, {})
-        # Implementation would depend on playlist management
-        logger.info(f"Previous track for chat {chat_id}")
-
-    async def next_track(self, chat_id: int):
-        """Go to next track"""
-        state = self.playback_state.get(chat_id, {})
-        # Implementation would depend on playlist management
-        logger.info(f"Next track for chat {chat_id}")
-
-    async def stop_playback(self, chat_id: int):
-        """Stop playback"""
-        if chat_id in self.playback_state:
-            self.playback_state[chat_id]['playing'] = False
-        logger.info(f"Stopped playback for chat {chat_id}")
-
-    async def show_volume_controls(self, event):
-        """Show volume control options"""
-        volume_keyboard = [
-            [
-                Button.inline("🔇", "volume_mute"),
-                Button.inline("🔉", "volume_low"),
-                Button.inline("🔊", "volume_high")
-            ],
-            [Button.inline("🔙 Back", "music_back")]
-        ]
-        await event.edit("🔊 Volume Control:", buttons=volume_keyboard)
-
-    async def toggle_repeat(self, chat_id: int):
-        """Toggle repeat mode"""
-        if chat_id not in self.playback_state:
-            self.playback_state[chat_id] = {}
-
-        state = self.playback_state[chat_id]
-        state['repeat'] = not state.get('repeat', False)
-        logger.info(f"Toggled repeat for chat {chat_id}: {state['repeat']}")
-
-    def get_playback_status(self, chat_id: int) -> Dict:
-        """Get current playback status"""
-        return self.playback_state.get(chat_id, {
-            'playing': False,
-            'current_song': None,
-            'repeat': False
-        })
-
-    async def cleanup_old_downloads(self, max_age_hours: int = 24):
-        """Clean up old downloaded files"""
+    async def stop_stream(self, chat_id: int) -> bool:
+        """Stop current stream and leave voice chat"""
         try:
-            current_time = time.time()
-            max_age_seconds = max_age_hours * 3600
+            if chat_id in self.streams:
+                # Stop streaming
+                await self.pytgcalls.leave_call(chat_id)
 
-            for file_path in self.download_path.glob("*"):
-                if file_path.is_file():
-                    file_age = current_time - file_path.stat().st_mtime
-                    if file_age > max_age_seconds:
-                        file_path.unlink()
-                        logger.info(f"Cleaned up old download: {file_path.name}")
+                # Clear queue
+                if chat_id in self.queues:
+                    self.queues[chat_id].clear()
 
-            # Clean cache entries for deleted files
-            self.download_cache = {
-                url: path for url, path in self.download_cache.items()
-                if os.path.exists(path)
-            }
+                # Remove stream info
+                del self.streams[chat_id]
+
+                logger.info(f"Stopped stream in chat {chat_id}")
+                return True
+
+        except GroupCallNotFound:
+            # Not in voice chat
+            if chat_id in self.streams:
+                del self.streams[chat_id]
+            return True
 
         except Exception as e:
-            logger.error(f"Error cleaning up downloads: {e}")
+            logger.error(f"Error stopping stream: {e}")
 
-    async def get_download_stats(self) -> Dict:
-        """Get download statistics"""
+        return False
+
+    async def pause_stream(self, chat_id: int) -> bool:
+        """Pause current stream"""
         try:
-            download_files = list(self.download_path.glob("*"))
-            total_files = len(download_files)
-            total_size = sum(f.stat().st_size for f in download_files if f.is_file())
+            if chat_id in self.streams and self.streams[chat_id].get('active'):
+                await self.pytgcalls.pause_stream(chat_id)
+                self.streams[chat_id]['active'] = False
+                return True
+        except Exception as e:
+            logger.error(f"Error pausing stream: {e}")
+        return False
 
-            return {
-                'total_files': total_files,
-                'total_size_mb': round(total_size / (1024 * 1024), 2),
-                'cache_entries': len(self.download_cache),
-                'active_chats': len(self.playback_state)
-            }
+    async def resume_stream(self, chat_id: int) -> bool:
+        """Resume paused stream"""
+        try:
+            if chat_id in self.streams and not self.streams[chat_id].get('active'):
+                await self.pytgcalls.resume_stream(chat_id)
+                self.streams[chat_id]['active'] = True
+                return True
+        except Exception as e:
+            logger.error(f"Error resuming stream: {e}")
+        return False
+
+    async def leave_voice_chat(self, chat_id: int):
+        """Leave voice chat"""
+        try:
+            await self.pytgcalls.leave_call(chat_id)
+            if chat_id in self.streams:
+                del self.streams[chat_id]
+            if chat_id in self.queues:
+                del self.queues[chat_id]
+            logger.info(f"Left voice chat in {chat_id}")
+        except GroupCallNotFound:
+            pass
+        except Exception as e:
+            logger.error(f"Error leaving voice chat: {e}")
+
+    async def _monitor_voice_chat(self, chat_id: int):
+        """Monitor voice chat and leave if empty"""
+        try:
+            while chat_id in self.streams:
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+                # Check if still in voice chat
+                if chat_id not in self.streams:
+                    break
+
+                # Get voice chat info
+                try:
+                    chat = await self.client.get_entity(chat_id)
+                    call = await self.client(GetFullChatRequest(chat_id))
+
+                    # Check if voice chat has members besides bot
+                    if call.full_chat.call:
+                        participants = await self.client(GetGroupCallParticipantsRequest(
+                            call=call.full_chat.call,
+                            offset='',
+                            limit=10
+                        ))
+
+                        # If only bot is in VC, leave
+                        if len(participants.participants) <= 1:
+                            logger.info(f"Voice chat empty in {chat_id}, leaving...")
+                            await self.leave_voice_chat(chat_id)
+                            break
+
+                except Exception as e:
+                    logger.debug(f"Error checking VC members: {e}")
 
         except Exception as e:
-            logger.error(f"Error getting download stats: {e}")
-            return {}
+            logger.error(f"Error in VC monitor: {e}")
 
-    def format_duration(self, seconds: int) -> str:
-        """Format duration in MM:SS format"""
-        if not seconds:
-            return "Unknown"
+    def get_current_song(self, chat_id: int) -> Optional[Dict]:
+        """Get currently playing song"""
+        if chat_id in self.streams:
+            return self.streams[chat_id].get('song')
+        return None
 
-        minutes, seconds = divmod(int(seconds), 60)
-        return f"{minutes:02d}:{seconds:02d}"
+    def get_queue(self, chat_id: int) -> List[Dict]:
+        """Get song queue for chat"""
+        return self.queues.get(chat_id, [])
 
-    def format_music_info(self, info: Dict) -> str:
-        """Format music info for display"""
-        title = info.get('title', 'Unknown')
-        uploader = info.get('uploader', 'Unknown')
-        duration = self.format_duration(info.get('duration', 0))
-
-        return f"🎵 **{title}**\n👤 {uploader}\n⏱️ {duration}"
+    def get_stream_stats(self) -> Dict:
+        """Get streaming statistics"""
+        return {
+            'active_streams': len(self.streams),
+            'total_queued': sum(len(q) for q in self.queues.values()),
+            'pytgcalls_available': PYTGCALLS_AVAILABLE
+        }
