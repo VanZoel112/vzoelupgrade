@@ -42,11 +42,11 @@ class VBot:
 
     def __init__(self):
         self.client = None
+        self.music_manager = None  # Will be initialized after client
 
         # Initialize managers (they will import config directly)
         self.auth_manager = AuthManager()
         self.emoji_manager = EmojiManager()
-        self.music_manager = MusicManager()
         self.lock_manager = LockManager()
         self.tag_manager = TagManager()
         self.welcome_manager = WelcomeManager()
@@ -73,6 +73,12 @@ class VBot:
             me = await self.client.get_me()
             logger.info(f"🎵 VBot started successfully!")
             logger.info(f"Bot: {me.first_name} (@{me.username})")
+
+            # Initialize Music Manager with client (for PyTgCalls)
+            from core.music_manager import MusicManager
+            self.music_manager = MusicManager(self.client)
+            await self.music_manager.start()
+            logger.info("🎵 Music streaming system ready")
 
             # Setup event handlers
             self._setup_event_handlers()
@@ -177,6 +183,14 @@ class VBot:
             # Music commands
             elif command in ['/play', '/p', '/music']:
                 await self._handle_music_command(message, parts)
+            elif command in ['/stop', '/end']:
+                await self._handle_stop_command(message)
+            elif command == '/pause':
+                await self._handle_pause_command(message)
+            elif command == '/resume':
+                await self._handle_resume_command(message)
+            elif command in ['/queue', '/q']:
+                await self._handle_queue_command(message)
 
             # Lock commands
             elif command == '/lock':
@@ -216,54 +230,134 @@ class VBot:
             logger.error(f"Error routing command {command}: {e}")
 
     async def _handle_music_command(self, message, parts):
-        """Handle music commands"""
+        """Handle music streaming commands"""
         if not config.MUSIC_ENABLED:
             await message.reply("🎵 Music system is disabled")
             return
 
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
         try:
             if len(parts) < 2:
-                await message.reply("🎵 Usage: /play <song name or URL>")
+                await message.reply("🎵 **Usage:** /play <song name or URL>\n\n**Examples:**\n• /play shape of you\n• /play https://youtu.be/...")
                 return
 
             query = ' '.join(parts[1:])
 
-            # Search for music
-            results = await self.music_manager.search_music(query, max_results=1)
-            if not results:
-                await message.reply("❌ No music found for your query")
-                return
+            # Show processing message
+            status_msg = await message.reply("🔍 Searching and preparing stream...")
 
-            # Download audio
-            song_info = results[0]
-            download_result = await self.music_manager.download_audio(
-                song_info['url'], message.sender_id
+            # Play stream
+            result = await self.music_manager.play_stream(
+                message.chat_id,
+                query,
+                message.sender_id
             )
 
-            if download_result:
-                # Create music keyboard
-                keyboard = self.music_manager.create_music_keyboard(
-                    message.chat_id, song_info['id']
-                )
+            if result['success']:
+                song = result['song']
 
-                # Format info
-                info_text = self.music_manager.format_music_info(song_info)
-
-                # Send with controls
-                await message.reply(
-                    f"🎵 **Now Playing:**\n\n{info_text}",
-                    buttons=keyboard
-                )
-
-                # Send audio file
-                await self.client.send_file(
-                    message.chat_id,
-                    download_result['file_path'],
-                    caption=f"🎵 {song_info['title']}"
-                )
+                if result.get('queued'):
+                    # Song added to queue
+                    await status_msg.edit(
+                        f"📋 **Added to Queue (#{result['position']})**\n\n"
+                        f"🎵 **{song['title']}**\n"
+                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}"
+                    )
+                else:
+                    # Now streaming
+                    await status_msg.edit(
+                        f"🎵 **Now Streaming in Voice Chat**\n\n"
+                        f"🎶 **{song['title']}**\n"
+                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n\n"
+                        f"**Controls:**\n"
+                        f"/pause - Pause stream\n"
+                        f"/resume - Resume stream\n"
+                        f"/stop - Stop and leave VC"
+                    )
+            else:
+                await status_msg.edit(f"❌ Error: {result.get('error', 'Unknown error')}")
 
         except Exception as e:
+            logger.error(f"Error in music command: {e}")
             await message.reply(f"❌ Error playing music: {str(e)}")
+
+    async def _handle_stop_command(self, message):
+        """Handle /stop command"""
+        if not self.music_manager:
+            return
+
+        try:
+            success = await self.music_manager.stop_stream(message.chat_id)
+            if success:
+                await message.reply("⏹️ Stopped streaming and left voice chat")
+            else:
+                await message.reply("❌ No active stream in this chat")
+        except Exception as e:
+            await message.reply(f"❌ Error stopping stream: {str(e)}")
+
+    async def _handle_pause_command(self, message):
+        """Handle /pause command"""
+        if not self.music_manager:
+            return
+
+        try:
+            success = await self.music_manager.pause_stream(message.chat_id)
+            if success:
+                await message.reply("⏸️ Paused stream")
+            else:
+                await message.reply("❌ No active stream to pause")
+        except Exception as e:
+            await message.reply(f"❌ Error pausing stream: {str(e)}")
+
+    async def _handle_resume_command(self, message):
+        """Handle /resume command"""
+        if not self.music_manager:
+            return
+
+        try:
+            success = await self.music_manager.resume_stream(message.chat_id)
+            if success:
+                await message.reply("▶️ Resumed stream")
+            else:
+                await message.reply("❌ No paused stream to resume")
+        except Exception as e:
+            await message.reply(f"❌ Error resuming stream: {str(e)}")
+
+    async def _handle_queue_command(self, message):
+        """Handle /queue command"""
+        if not self.music_manager:
+            return
+
+        try:
+            current = self.music_manager.get_current_song(message.chat_id)
+            queue = self.music_manager.get_queue(message.chat_id)
+
+            if not current and not queue:
+                await message.reply("📋 Queue is empty\n\nUse /play to add songs!")
+                return
+
+            response = "📋 **Music Queue**\n\n"
+
+            if current:
+                response += f"🎵 **Now Playing:**\n{current['title']}\n\n"
+
+            if queue:
+                response += "**Up Next:**\n"
+                for i, song in enumerate(queue[:10], 1):
+                    response += f"{i}. {song['title']}\n"
+
+                if len(queue) > 10:
+                    response += f"\n... and {len(queue) - 10} more"
+            else:
+                response += "No songs in queue"
+
+            await message.reply(response)
+
+        except Exception as e:
+            await message.reply(f"❌ Error getting queue: {str(e)}")
 
     async def _handle_lock_command(self, message, parts):
         """Handle /lock command"""
