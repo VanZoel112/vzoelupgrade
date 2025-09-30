@@ -121,7 +121,10 @@ class MusicManager:
     async def play_stream(self, chat_id: int, query: str, requester_id: int) -> Dict:
         """Play audio stream in voice chat"""
         if not self.pytgcalls_available:
-            return {'success': False, 'error': 'PyTgCalls not available'}
+            return {
+                'success': False,
+                'error': 'PyTgCalls not installed. Install with: pip install py-tgcalls pytgcalls'
+            }
 
         # Rate limiting
         current_time = time.time()
