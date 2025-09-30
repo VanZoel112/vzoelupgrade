@@ -44,6 +44,11 @@ DOWNLOAD_PATH = "downloads/"
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 AUDIO_QUALITY = "bestaudio[ext=m4a]/bestaudio"
 
+# YouTube Cookies (optional - helps bypass bot detection)
+# You can use cookies file path or browser name (chrome, firefox, edge, etc)
+YOUTUBE_COOKIES_FROM_BROWSER = ""  # e.g., "chrome" or "firefox"
+YOUTUBE_COOKIES_FILE = ""  # e.g., "cookies.txt" (path to cookies file)
+
 # ==============================================
 # FEATURE TOGGLES
 # ==============================================

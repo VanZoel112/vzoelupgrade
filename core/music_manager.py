@@ -113,6 +113,14 @@ class MusicManager:
                 'no_warnings': True,
             }
 
+            # Add cookies support to bypass YouTube bot detection
+            if config.YOUTUBE_COOKIES_FROM_BROWSER:
+                ydl_opts['cookiesfrombrowser'] = (config.YOUTUBE_COOKIES_FROM_BROWSER,)
+                logger.info(f"Using cookies from browser: {config.YOUTUBE_COOKIES_FROM_BROWSER}")
+            elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+                ydl_opts['cookiefile'] = config.YOUTUBE_COOKIES_FILE
+                logger.info(f"Using cookies from file: {config.YOUTUBE_COOKIES_FILE}")
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Extract info first
                 info = ydl.extract_info(url, download=False)
