@@ -46,9 +46,9 @@ AUDIO_QUALITY = "bestaudio[ext=m4a]/bestaudio"
 
 # YouTube Cookies (REQUIRED - helps bypass bot detection)
 # Option 1: Use browser cookies (recommended for local)
-YOUTUBE_COOKIES_FROM_BROWSER = "firefox"  # chrome, firefox, edge, etc
+YOUTUBE_COOKIES_FROM_BROWSER = ""  # chrome, firefox, edge, etc
 # Option 2: Use cookies file (recommended for server)
-YOUTUBE_COOKIES_FILE = ""  # e.g., "cookies.txt" (Netscape format)
+YOUTUBE_COOKIES_FILE = "youtube_cookies.txt"  # Netscape format cookies file
 
 # ==============================================
 # FEATURE TOGGLES

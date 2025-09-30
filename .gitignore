@@ -34,6 +34,10 @@ ENV/
 *.session
 *.session-journal
 
+# YouTube cookies (contains sensitive authentication data)
+youtube_cookies.txt
+*cookies.txt
+
 # Data files
 data/*.json
 !data/.gitkeep
