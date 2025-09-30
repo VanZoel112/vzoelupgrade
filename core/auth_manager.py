@@ -11,26 +11,25 @@ import asyncio
 import logging
 from typing import List, Dict, Set, Optional
 from telethon.tl.types import User, Chat, Channel
-from config import VBotConfig
+import config
 
 logger = logging.getLogger(__name__)
 
 class AuthManager:
     """Manages authentication and authorization for VBot"""
 
-    def __init__(self, config: VBotConfig):
-        self.config = config
+    def __init__(self):
         self.admin_cache: Dict[int, Set[int]] = {}  # chat_id -> set of admin user_ids
         self.cache_expiry = 300  # 5 minutes
         self.last_cache_update: Dict[int, float] = {}
 
     async def is_developer(self, user_id: int) -> bool:
         """Check if user is a developer (can use . commands)"""
-        return user_id in self.config.auth.developer_ids or user_id == self.config.auth.owner_id
+        return user_id in config.DEVELOPER_IDS or user_id == config.OWNER_ID
 
     async def is_owner(self, user_id: int) -> bool:
         """Check if user is the owner"""
-        return user_id == self.config.auth.owner_id
+        return user_id == config.OWNER_ID
 
     async def is_admin_in_chat(self, client, user_id: int, chat_id: int) -> bool:
         """Check if user is admin in specific chat (can use / commands)"""

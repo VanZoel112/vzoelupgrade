@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class TagManager:
     """Manages progressive tagging of all members"""
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
+        
         self.active_tags: Dict[int, Dict] = {}  # chat_id -> tag session info
         self.cancelled_tags: Set[int] = set()  # chat_ids with cancelled tags
 

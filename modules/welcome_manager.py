@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 class WelcomeManager:
     """Manages welcome messages for new members"""
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
+        
         self.data_path = Path("data/welcome_settings.json")
         self.welcome_settings: Dict[int, Dict] = {}  # chat_id -> settings
 

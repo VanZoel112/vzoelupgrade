@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class PrivacyManager:
     """Manages silent command execution and privacy settings"""
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
+        
         self.silent_chats: Set[int] = set()  # Chats where bot operates silently
         self.private_commands: Set[str] = {
             '.setwelcome', '.github', '.sync', '.privacy',

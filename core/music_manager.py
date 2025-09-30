@@ -17,6 +17,7 @@ from pathlib import Path
 import aiohttp
 import aiofiles
 from telethon import Button
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,8 @@ except ImportError:
 class MusicManager:
     """Manages music download and playback using yt-dlp"""
 
-    def __init__(self, config):
-        self.config = config
-        self.download_path = Path(config.music.download_path)
+    def __init__(self):
+        self.download_path = Path(config.DOWNLOAD_PATH)
         self.download_path.mkdir(exist_ok=True)
 
         # Current playback state per chat

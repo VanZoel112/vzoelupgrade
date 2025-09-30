@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 class GitHubSync:
     """Manages GitHub synchronization for data backup"""
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
+        
         self.github_config = config.github
         self.sync_queue: List[Dict] = []
         self.is_syncing = False

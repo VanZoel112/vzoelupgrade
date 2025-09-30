@@ -1,190 +1,127 @@
 #!/usr/bin/env python3
 """
 VBot Python Configuration
-Centralized configuration management for all vbot features
+Simple and straightforward - just edit the values below!
 
-Author: VanZoel112 (Converted from Node.js)
+Author: VanZoel112
 Version: 2.0.0 Python
 """
 
-import os
-from typing import Dict, List, Optional
-from dataclasses import dataclass
-from dotenv import load_dotenv
+# ==============================================
+# TELEGRAM BOT CONFIGURATION
+# ==============================================
 
-# Load environment variables
-load_dotenv()
+# Get your bot token from @BotFather
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-@dataclass
-class TelegramConfig:
-    """Telegram API Configuration"""
-    api_id: int
-    api_hash: str
-    bot_token: str
-    session_name: str = "vbot_session"
+# Your Telegram API credentials (hardcoded - no need to change)
+API_ID = 28830134
+API_HASH = "4d3d3aa37e7e6df41439319e0767e9ab"
 
-@dataclass
-class AuthConfig:
-    """Authorization Configuration"""
-    developer_ids: List[int]
-    admin_chat_ids: List[int]
-    owner_id: int
+# ==============================================
+# USER AUTHORIZATION
+# ==============================================
 
-@dataclass
-class MusicConfig:
-    """Music System Configuration"""
-    download_path: str = "downloads/"
-    max_file_size: int = 50 * 1024 * 1024  # 50MB
-    audio_quality: str = "best[height<=480]"
-    enable_ytdlp: bool = True
+# Your Telegram User ID (owner)
+OWNER_ID = 0  # Change this to your user ID
 
-@dataclass
-class GitHubConfig:
-    """GitHub Integration Configuration"""
-    token: str
-    repository: str
-    branch: str = "main"
-    auto_commit: bool = True
+# Developer IDs (can use . prefix commands)
+DEVELOPER_IDS = [
+    0,  # Add your developer IDs here
+]
 
-@dataclass
-class VBotConfig:
-    """Main VBot Configuration Container"""
-    telegram: TelegramConfig
-    auth: AuthConfig
-    music: MusicConfig
-    github: Optional[GitHubConfig] = None
+# Admin chat IDs (can use / prefix commands)
+ADMIN_CHAT_IDS = [
+    0,  # Add your group/channel IDs here
+]
 
-    # Feature toggles
-    enable_music: bool = True
-    enable_lock_system: bool = True
-    enable_premium_emoji: bool = True
-    enable_tag_system: bool = True
-    enable_welcome_system: bool = True
-    enable_github_sync: bool = True
-    enable_privacy_system: bool = True
-    enable_public_commands: bool = True
+# ==============================================
+# MUSIC SYSTEM SETTINGS
+# ==============================================
 
-    # System settings
-    command_prefix_admin: str = "/"
-    command_prefix_dev: str = "."
-    command_prefix_public: str = "#"
+MUSIC_ENABLED = True
+DOWNLOAD_PATH = "downloads/"
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+AUDIO_QUALITY = "bestaudio[ext=m4a]/bestaudio"
 
-    # Rate limiting
-    tag_delay: float = 2.0  # seconds between tags
-    music_cooldown: int = 5  # seconds
+# ==============================================
+# FEATURE TOGGLES
+# ==============================================
 
-    # Emoji mappings (standard -> premium)
-    premium_emoji_map: Dict[str, str] = None
+ENABLE_LOCK_SYSTEM = True
+ENABLE_PREMIUM_EMOJI = True
+ENABLE_TAG_SYSTEM = True
+ENABLE_WELCOME_SYSTEM = True
+ENABLE_GITHUB_SYNC = False  # Set to True if you want auto backup
+ENABLE_PRIVACY_SYSTEM = True
+ENABLE_PUBLIC_COMMANDS = True
 
-    def __post_init__(self):
-        """Initialize default emoji mappings"""
-        if self.premium_emoji_map is None:
-            self.premium_emoji_map = {
-                "🎵": "🎵",  # Music note
-                "⏸️": "⏸️",  # Pause
-                "▶️": "▶️",  # Play
-                "⏭️": "⏭️",  # Next
-                "🔊": "🔊",  # Volume
-                "❤️": "❤️‍🔥",  # Premium heart
-                "🔥": "🔥",  # Fire
-                "⭐": "⭐",  # Star
-                "🎉": "🎊",  # Party
-                "👍": "👍",  # Thumbs up
-                "😍": "🥰",  # Love eyes
-                "💯": "💯",  # Hundred points
-            }
+# ==============================================
+# COMMAND PREFIXES
+# ==============================================
 
-def load_config() -> VBotConfig:
-    """Load configuration from environment variables"""
+PREFIX_ADMIN = "/"    # For admin commands
+PREFIX_DEV = "."      # For developer commands
+PREFIX_PUBLIC = "#"   # For public commands
 
-    # Telegram configuration
-    telegram_config = TelegramConfig(
-        api_id=int(os.getenv("TELEGRAM_API_ID", "0")),
-        api_hash=os.getenv("TELEGRAM_API_HASH", ""),
-        bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
-        session_name=os.getenv("SESSION_NAME", "vbot_session")
-    )
+# ==============================================
+# RATE LIMITING
+# ==============================================
 
-    # Auth configuration
-    developer_ids = []
-    dev_ids_str = os.getenv("DEVELOPER_IDS", "")
-    if dev_ids_str:
-        developer_ids = [int(x.strip()) for x in dev_ids_str.split(",")]
+TAG_DELAY = 2.0  # Seconds between tags
+MUSIC_COOLDOWN = 5  # Seconds cooldown for music commands
 
-    admin_chat_ids = []
-    admin_ids_str = os.getenv("ADMIN_CHAT_IDS", "")
-    if admin_ids_str:
-        admin_chat_ids = [int(x.strip()) for x in admin_ids_str.split(",")]
+# ==============================================
+# GITHUB SYNC (Optional - for data backup)
+# ==============================================
 
-    auth_config = AuthConfig(
-        developer_ids=developer_ids,
-        admin_chat_ids=admin_chat_ids,
-        owner_id=int(os.getenv("OWNER_ID", "0"))
-    )
+GITHUB_TOKEN = ""  # Your GitHub personal access token
+GITHUB_REPOSITORY = ""  # Format: username/repo
+GITHUB_BRANCH = "main"
+GITHUB_AUTO_COMMIT = True
 
-    # Music configuration
-    music_config = MusicConfig(
-        download_path=os.getenv("DOWNLOAD_PATH", "downloads/"),
-        max_file_size=int(os.getenv("MAX_FILE_SIZE", str(50 * 1024 * 1024))),
-        audio_quality=os.getenv("AUDIO_QUALITY", "best[height<=480]"),
-        enable_ytdlp=os.getenv("ENABLE_YTDLP", "true").lower() == "true"
-    )
+# ==============================================
+# PREMIUM EMOJI MAPPINGS
+# ==============================================
 
-    # GitHub configuration (optional)
-    github_config = None
-    github_token = os.getenv("GITHUB_TOKEN")
-    github_repo = os.getenv("GITHUB_REPOSITORY")
+PREMIUM_EMOJI_MAP = {
+    "🎵": "🎵",
+    "⏸️": "⏸️",
+    "▶️": "▶️",
+    "⏭️": "⏭️",
+    "🔊": "🔊",
+    "❤️": "❤️‍🔥",
+    "🔥": "🔥",
+    "⭐": "⭐",
+    "🎉": "🎊",
+    "👍": "👍",
+    "😍": "🥰",
+    "💯": "💯",
+}
 
-    if github_token and github_repo:
-        github_config = GitHubConfig(
-            token=github_token,
-            repository=github_repo,
-            branch=os.getenv("GITHUB_BRANCH", "main"),
-            auto_commit=os.getenv("GITHUB_AUTO_COMMIT", "true").lower() == "true"
-        )
+# ==============================================
+# VALIDATION
+# ==============================================
 
-    return VBotConfig(
-        telegram=telegram_config,
-        auth=auth_config,
-        music=music_config,
-        github=github_config,
-
-        # Feature toggles from environment
-        enable_music=os.getenv("ENABLE_MUSIC", "true").lower() == "true",
-        enable_lock_system=os.getenv("ENABLE_LOCK_SYSTEM", "true").lower() == "true",
-        enable_premium_emoji=os.getenv("ENABLE_PREMIUM_EMOJI", "true").lower() == "true",
-        enable_tag_system=os.getenv("ENABLE_TAG_SYSTEM", "true").lower() == "true",
-        enable_welcome_system=os.getenv("ENABLE_WELCOME_SYSTEM", "true").lower() == "true",
-        enable_github_sync=os.getenv("ENABLE_GITHUB_SYNC", "true").lower() == "true",
-        enable_privacy_system=os.getenv("ENABLE_PRIVACY_SYSTEM", "true").lower() == "true",
-        enable_public_commands=os.getenv("ENABLE_PUBLIC_COMMANDS", "true").lower() == "true",
-
-        # Rate limiting
-        tag_delay=float(os.getenv("TAG_DELAY", "2.0")),
-        music_cooldown=int(os.getenv("MUSIC_COOLDOWN", "5"))
-    )
-
-# Global config instance
-config = load_config()
-
-# Validation
-def validate_config(config: VBotConfig) -> List[str]:
-    """Validate configuration and return list of errors"""
+def validate_config():
+    """Validate configuration before starting bot"""
     errors = []
 
-    if not config.telegram.api_id:
-        errors.append("TELEGRAM_API_ID is required")
+    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        errors.append("❌ BOT_TOKEN belum diisi! Dapatkan dari @BotFather")
 
-    if not config.telegram.api_hash:
-        errors.append("TELEGRAM_API_HASH is required")
+    if OWNER_ID == 0:
+        errors.append("❌ OWNER_ID belum diisi! Isi dengan Telegram User ID kamu")
 
-    if not config.telegram.bot_token:
-        errors.append("TELEGRAM_BOT_TOKEN is required")
+    if not DEVELOPER_IDS or DEVELOPER_IDS == [0]:
+        errors.append("⚠️  DEVELOPER_IDS belum diisi (optional)")
 
-    if not config.auth.developer_ids:
-        errors.append("At least one DEVELOPER_ID is required")
+    if errors:
+        print("\n🚨 CONFIGURATION ERRORS:\n")
+        for error in errors:
+            print(f"  {error}")
+        print("\n📝 Edit file config.py untuk mengisi konfigurasi!\n")
+        return False
 
-    if not config.auth.owner_id:
-        errors.append("OWNER_ID is required")
-
-    return errors
+    print("✅ Configuration validated successfully!")
+    return True

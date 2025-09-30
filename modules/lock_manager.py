@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 class LockManager:
     """Manages user locking and auto-deletion"""
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
+        
         self.data_path = Path("data/locked_users.json")
         self.locked_users: Dict[int, Set[int]] = {}  # chat_id -> set of locked user_ids
         self.lock_reasons: Dict[int, Dict[int, str]] = {}  # chat_id -> user_id -> reason

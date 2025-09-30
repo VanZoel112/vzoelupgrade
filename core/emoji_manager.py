@@ -12,16 +12,15 @@ import logging
 import re
 from typing import Dict, Optional, List
 from telethon.tl.types import User
-from config import VBotConfig
+import config
 
 logger = logging.getLogger(__name__)
 
 class EmojiManager:
     """Manages premium emoji conversion and fallback"""
 
-    def __init__(self, config: VBotConfig):
-        self.config = config
-        self.premium_emoji_map = config.premium_emoji_map.copy()
+    def __init__(self):
+        self.premium_emoji_map = config.PREMIUM_EMOJI_MAP.copy()
         self.user_premium_cache: Dict[int, bool] = {}
         self.cache_expiry = 3600  # 1 hour
         self.last_cache_update: Dict[int, float] = {}

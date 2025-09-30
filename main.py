@@ -27,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import configuration and validate
-from config import load_config, validate_config
+import config
 
 # Import Telethon
 from telethon import TelegramClient, events, Button
@@ -41,38 +41,33 @@ class VBot:
     """Main VBot application class"""
 
     def __init__(self):
-        self.config = load_config()
         self.client = None
 
-        # Initialize managers
-        self.auth_manager = AuthManager(self.config)
-        self.emoji_manager = EmojiManager(self.config)
-        self.music_manager = MusicManager(self.config)
-        self.lock_manager = LockManager(self.config)
-        self.tag_manager = TagManager(self.config)
-        self.welcome_manager = WelcomeManager(self.config)
-        self.github_sync = GitHubSync(self.config)
-        self.privacy_manager = PrivacyManager(self.config)
+        # Initialize managers (they will import config directly)
+        self.auth_manager = AuthManager()
+        self.emoji_manager = EmojiManager()
+        self.music_manager = MusicManager()
+        self.lock_manager = LockManager()
+        self.tag_manager = TagManager()
+        self.welcome_manager = WelcomeManager()
+        self.github_sync = GitHubSync()
+        self.privacy_manager = PrivacyManager()
 
     async def initialize(self):
         """Initialize VBot"""
         try:
             # Validate configuration
-            config_errors = validate_config(self.config)
-            if config_errors:
-                logger.error("Configuration errors:")
-                for error in config_errors:
-                    logger.error(f"  - {error}")
+            if not config.validate_config():
                 return False
 
             # Initialize Telegram client
             self.client = TelegramClient(
-                self.config.telegram.session_name,
-                self.config.telegram.api_id,
-                self.config.telegram.api_hash
+                "vbot_session",
+                config.API_ID,
+                config.API_HASH
             )
 
-            await self.client.start(bot_token=self.config.telegram.bot_token)
+            await self.client.start(bot_token=config.BOT_TOKEN)
 
             # Get bot info
             me = await self.client.get_me()
