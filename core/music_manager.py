@@ -39,6 +39,7 @@ class MusicManager:
     def __init__(self, client):
         self.client = client
         self.pytgcalls = None
+        self.pytgcalls_available = PYTGCALLS_AVAILABLE
 
         # Streaming state per chat
         self.streams: Dict[int, Dict] = {}  # chat_id -> stream info
@@ -47,18 +48,18 @@ class MusicManager:
         # Rate limiting
         self.last_request: Dict[int, float] = {}
 
-        if PYTGCALLS_AVAILABLE:
+        if self.pytgcalls_available:
             try:
                 # Initialize PyTgCalls
                 self.pytgcalls = PyTgCalls(client)
                 logger.info("PyTgCalls initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize PyTgCalls: {e}")
-                PYTGCALLS_AVAILABLE = False
+                self.pytgcalls_available = False
 
     async def start(self):
         """Start PyTgCalls client"""
-        if self.pytgcalls and PYTGCALLS_AVAILABLE:
+        if self.pytgcalls and self.pytgcalls_available:
             try:
                 await self.pytgcalls.start()
                 logger.info("PyTgCalls started")
@@ -119,7 +120,7 @@ class MusicManager:
 
     async def play_stream(self, chat_id: int, query: str, requester_id: int) -> Dict:
         """Play audio stream in voice chat"""
-        if not PYTGCALLS_AVAILABLE:
+        if not self.pytgcalls_available:
             return {'success': False, 'error': 'PyTgCalls not available'}
 
         # Rate limiting
@@ -307,5 +308,5 @@ class MusicManager:
         return {
             'active_streams': len(self.streams),
             'total_queued': sum(len(q) for q in self.queues.values()),
-            'pytgcalls_available': PYTGCALLS_AVAILABLE
+            'pytgcalls_available': self.pytgcalls_available
         }
