@@ -26,10 +26,13 @@ except ImportError:
 
 try:
     from pytgcalls import PyTgCalls
+    from pytgcalls.types import MediaStream, AudioQuality
     PYTGCALLS_AVAILABLE = True
 except ImportError:
     PYTGCALLS_AVAILABLE = False
     logger.warning("py-tgcalls not available - install with: pip install py-tgcalls")
+    MediaStream = None
+    AudioQuality = None
 
 class MusicManager:
     """Music manager with voice chat streaming support"""
@@ -208,12 +211,29 @@ class MusicManager:
 
                 # Join voice chat and play
                 try:
-                    # Use webpage_url for streaming (YouTube URL)
-                    stream_url = song_info.get('webpage_url') or song_info.get('url')
+                    # Use YouTube URL for streaming
+                    youtube_url = song_info.get('webpage_url')
 
+                    # Build yt-dlp parameters with cookies
+                    ytdlp_params = []
+                    if config.YOUTUBE_COOKIES_FROM_BROWSER:
+                        ytdlp_params.append(f'--cookies-from-browser {config.YOUTUBE_COOKIES_FROM_BROWSER}')
+                    elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+                        ytdlp_params.append(f'--cookies {config.YOUTUBE_COOKIES_FILE}')
+
+                    ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
+
+                    # Create MediaStream with YouTube URL
+                    media_stream = MediaStream(
+                        youtube_url,
+                        AudioQuality.HIGH,
+                        ytdlp_parameters=ytdlp_parameters
+                    )
+
+                    # Play in voice chat
                     await self.pytgcalls.play(
                         chat_id,
-                        stream_url
+                        media_stream
                     )
 
                     self.active_calls[chat_id] = True
