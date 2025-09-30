@@ -187,13 +187,13 @@ class VBot:
                 await self._handle_locklist_command(message)
 
             # Tag commands
-            elif command == '/tag':
+            elif command in ['/tag', '/tagall', '/tагall']:
                 await self._handle_tag_command(message, parts)
-            elif command == '/ctag':
+            elif command in ['/ctag', '/canceltag']:
                 await self._handle_cancel_tag_command(message)
 
             # Welcome commands
-            elif command in ['.setwelcome', '.welcome']:
+            elif command in ['.setwelcome', '.welcome', '/setwelcome', '/welcome']:
                 await self._handle_welcome_command(message, parts)
 
             # Public commands
@@ -387,17 +387,23 @@ I'm a feature-rich Telegram bot with:
 • 👋 Welcome system for new members
 • ⚙️ Multiple permission levels
 
-**Quick Start:**
-• /play <song> - Play music
-• /help - See all commands
-• #help - Public commands help
+**Quick Commands:**
+• /play <song> - Play music from YouTube
+• /tagall <text> - Mention all group members
+• /lock @user - Lock user (auto-delete their messages)
+• /welcome <text> - Set welcome message for new members
+
+**More Commands:**
+📁 /help - Show detailed command list
+ℹ️ /about - Bot information
+📊 .stats - Bot statistics (developers only)
 
 **Permission Levels:**
-/ - Admin commands (group admins)
-. - Developer commands (bot devs)
-# - Public commands (everyone)
+/ - Admin commands (for group admins)
+. - Developer commands (bot developers only)
+# - Public commands (everyone can use)
 
-Type /help to see all available commands!
+**Support:** @VanZoel112
 """
         await message.reply(welcome_text)
 
@@ -436,29 +442,46 @@ Made with ❤️ by Vzoel Fox
     async def _handle_help_command(self, message):
         """Handle #help command"""
         help_text = """
-🎵 **VBot Python - Help**
+📚 **VBot Python - Complete Command List**
 
-**Music Commands:**
-/play <song> - Play music from YouTube
+**🎵 Music Commands:**
+• /play <song> - Play music from YouTube
+• /music <song> - Alias for /play
 
-**Admin Commands:**
-/lock <user> - Lock user (auto-delete messages)
-/unlock <user_id> - Unlock user
-/tag <message> - Tag all members
+**🔒 Lock System (Admin):**
+• /lock @user [reason] - Lock user (auto-delete their messages)
+• /unlock <user_id> - Unlock user
+• /locklist - Show all locked users
 
-**Developer Commands:**
-.stats - Bot statistics
-.setwelcome <message> - Set welcome message
+**🏷️ Tag System (Admin):**
+• /tag <message> - Tag all group members
+• /tagall <message> - Alias for /tag
+• /ctag - Cancel ongoing tag process
 
-**Public Commands:**
-#help - Show this help
-#rules - Show group rules
-#session - Generate session string
+**👋 Welcome System (Admin/Dev):**
+• /welcome <message> - Set welcome message for new members
+• /setwelcome <message> - Alias for /welcome
 
-💡 **Prefixes:**
-/ - Admin commands
-. - Developer commands
-# - Public commands
+**📊 Developer Commands:**
+• .stats - Show bot statistics
+• .status - Alias for .stats
+
+**🌐 Public Commands:**
+• #help - Show this help
+• #rules - Show group rules
+• #session - Generate session string
+
+**ℹ️ General:**
+• /start - Welcome message
+• /help - Same as /start
+• /about - Bot information
+
+**💡 Permission Levels:**
+/ = Admin commands (group admins)
+. = Developer commands (bot devs only)
+# = Public commands (everyone)
+
+**🔧 Support:** @VanZoel112
 """
         await message.reply(help_text)
 
