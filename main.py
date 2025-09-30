@@ -96,7 +96,7 @@ class VBot:
         @self.client.on(events.ChatAction)
         async def handle_chat_action(event):
             if event.user_joined or event.user_added:
-                if self.config.enable_welcome_system:
+                if config.ENABLE_WELCOME_SYSTEM:
                     await self.welcome_manager.handle_new_member(self.client, event)
 
         # Callback query handler
@@ -114,7 +114,7 @@ class VBot:
                 return
 
             # Check for locked users (auto-delete)
-            if self.config.enable_lock_system:
+            if config.ENABLE_LOCK_SYSTEM:
                 deleted = await self.lock_manager.process_message_for_locked_users(
                     self.client, message
                 )
@@ -122,7 +122,7 @@ class VBot:
                     return
 
             # Process emojis for premium users
-            if self.config.enable_premium_emoji and hasattr(message, 'sender_id'):
+            if config.ENABLE_PREMIUM_EMOJI and hasattr(message, 'sender_id'):
                 processed_text = await self.emoji_manager.process_message_emojis(
                     self.client, message.text, message.sender_id
                 )
@@ -151,7 +151,7 @@ class VBot:
                 command_type = self.auth_manager.get_command_type(command_text)
                 error_msg = self.auth_manager.get_permission_error_message(command_type)
 
-                if self.config.enable_privacy_system:
+                if config.ENABLE_PRIVACY_SYSTEM:
                     await self.privacy_manager.process_private_command(
                         self.client, message, error_msg
                     )
@@ -211,7 +211,7 @@ class VBot:
 
     async def _handle_music_command(self, message, parts):
         """Handle music commands"""
-        if not self.config.enable_music:
+        if not config.MUSIC_ENABLED:
             await message.reply("🎵 Music system is disabled")
             return
 
@@ -261,7 +261,7 @@ class VBot:
 
     async def _handle_lock_command(self, message, parts):
         """Handle /lock command"""
-        if not self.config.enable_lock_system:
+        if not config.ENABLE_LOCK_SYSTEM:
             await message.reply("🔒 Lock system is disabled")
             return
 
@@ -293,7 +293,7 @@ class VBot:
                     response = f"🔒 User {user_id} has been locked\nReason: {reason}"
 
                     # Sync to GitHub if enabled
-                    if self.config.enable_github_sync:
+                    if config.ENABLE_GITHUB_SYNC:
                         await self.github_sync.queue_sync('lock_data', {
                             'chat_id': message.chat_id,
                             'user_id': user_id,
@@ -302,7 +302,7 @@ class VBot:
                 else:
                     response = "❌ Failed to lock user"
 
-                if self.config.enable_privacy_system:
+                if config.ENABLE_PRIVACY_SYSTEM:
                     await self.privacy_manager.process_private_command(
                         self.client, message, response
                     )
@@ -316,7 +316,7 @@ class VBot:
 
     async def _handle_unlock_command(self, message, parts):
         """Handle /unlock command"""
-        if not self.config.enable_lock_system:
+        if not config.ENABLE_LOCK_SYSTEM:
             return
 
         try:
@@ -329,7 +329,7 @@ class VBot:
 
             response = f"🔓 User {user_id} unlocked" if success else "❌ User not found in lock list"
 
-            if self.config.enable_privacy_system:
+            if config.ENABLE_PRIVACY_SYSTEM:
                 await self.privacy_manager.process_private_command(
                     self.client, message, response
                 )
@@ -343,7 +343,7 @@ class VBot:
 
     async def _handle_tag_command(self, message, parts):
         """Handle /tag command"""
-        if not self.config.enable_tag_system:
+        if not config.ENABLE_TAG_SYSTEM:
             await message.reply("🏷️ Tag system is disabled")
             return
 
@@ -399,12 +399,12 @@ class VBot:
         """Handle .stats command"""
         try:
             stats = {
-                'music': self.music_manager.get_download_stats() if self.config.enable_music else {},
-                'lock': self.lock_manager.get_lock_stats() if self.config.enable_lock_system else {},
-                'tag': self.tag_manager.get_tag_stats() if self.config.enable_tag_system else {},
-                'welcome': self.welcome_manager.get_welcome_stats() if self.config.enable_welcome_system else {},
-                'github': self.github_sync.get_sync_stats() if self.config.enable_github_sync else {},
-                'privacy': self.privacy_manager.get_privacy_stats() if self.config.enable_privacy_system else {}
+                'music': self.music_manager.get_download_stats() if config.MUSIC_ENABLED else {},
+                'lock': self.lock_manager.get_lock_stats() if config.ENABLE_LOCK_SYSTEM else {},
+                'tag': self.tag_manager.get_tag_stats() if config.ENABLE_TAG_SYSTEM else {},
+                'welcome': self.welcome_manager.get_welcome_stats() if config.ENABLE_WELCOME_SYSTEM else {},
+                'github': self.github_sync.get_sync_stats() if config.ENABLE_GITHUB_SYNC else {},
+                'privacy': self.privacy_manager.get_privacy_stats() if config.ENABLE_PRIVACY_SYSTEM else {}
             }
 
             stats_text = "📊 **VBot Statistics:**\n\n"
@@ -424,7 +424,7 @@ class VBot:
                 stats_text += f"• Configured: {'Yes' if stats['github'].get('github_configured') else 'No'}\n"
                 stats_text += f"• Queue size: {stats['github'].get('queue_size', 0)}\n\n"
 
-            if self.config.enable_privacy_system:
+            if config.ENABLE_PRIVACY_SYSTEM:
                 await self.privacy_manager.process_private_command(
                     self.client, message, stats_text
                 )
