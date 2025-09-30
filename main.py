@@ -78,7 +78,7 @@ class VBot:
             from core.music_manager import MusicManager
             self.music_manager = MusicManager(self.client)
             await self.music_manager.start()
-            logger.info("🎵 Music download system ready")
+            # Log message handled by music_manager.start()
 
             # Setup event handlers
             self._setup_event_handlers()
@@ -261,16 +261,27 @@ class VBot:
 
                 if result.get('queued'):
                     # Song added to queue
+                    mode = "🎙️ VC Queue" if result.get('streaming') else "📋 Download Queue"
                     await status_msg.edit(
-                        f"📋 **Added to Queue (#{result['position']})**\n\n"
+                        f"{mode} **#{result['position']}**\n\n"
                         f"🎵 **{song['title']}**\n"
                         f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}"
                     )
+                elif result.get('streaming'):
+                    # Streaming in voice chat
+                    await status_msg.edit(
+                        f"🎙️ **Now Streaming in Voice Chat**\n\n"
+                        f"🎶 **{song['title']}**\n"
+                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n\n"
+                        f"**Controls:**\n"
+                        f"/pause - Pause stream\n"
+                        f"/resume - Resume stream\n"
+                        f"/stop - Stop and leave VC"
+                    )
                 else:
-                    # Update status to uploading
+                    # Download mode - send file
                     await status_msg.edit("⬆️ Uploading audio...")
 
-                    # Send audio file
                     file_path = result.get('file_path')
                     if file_path:
                         await self.client.send_file(
@@ -286,7 +297,6 @@ class VBot:
                                 )
                             ]
                         )
-                        # Delete status message after sending
                         await status_msg.delete()
                     else:
                         await status_msg.edit("❌ Failed to download audio file")
@@ -313,11 +323,33 @@ class VBot:
 
     async def _handle_pause_command(self, message):
         """Handle /pause command"""
-        await message.reply("❌ Pause not available in download mode")
+        if not self.music_manager:
+            return
+
+        try:
+            success = await self.music_manager.pause_stream(message.chat_id)
+            if success:
+                await message.reply("⏸️ **Paused stream**")
+            else:
+                await message.reply("❌ No active stream to pause or streaming not available")
+        except Exception as e:
+            logger.error(f"Error pausing: {e}")
+            await message.reply("❌ Error pausing stream")
 
     async def _handle_resume_command(self, message):
         """Handle /resume command"""
-        await message.reply("❌ Resume not available in download mode")
+        if not self.music_manager:
+            return
+
+        try:
+            success = await self.music_manager.resume_stream(message.chat_id)
+            if success:
+                await message.reply("▶️ **Resumed stream**")
+            else:
+                await message.reply("❌ No paused stream to resume or streaming not available")
+        except Exception as e:
+            logger.error(f"Error resuming: {e}")
+            await message.reply("❌ Error resuming stream")
 
     async def _handle_queue_command(self, message):
         """Handle /queue command"""

@@ -6,3 +6,6 @@ requests>=2.31.0
 psutil>=5.9.6
 gitpython>=3.1.40
 colorlog>=6.8.0
+
+# Voice chat streaming (optional - for music streaming mode)
+py-tgcalls>=2.2.0

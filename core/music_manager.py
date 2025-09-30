@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Simple Music Manager - Download and Send
-No voice chat streaming, just download and send audio files
+Music Manager with Voice Chat Streaming
+Uses py-tgcalls for real-time audio streaming
 
 Author: VanZoel112
-Version: 2.0.0 Python (Simple)
+Version: 2.1.0 Python (Streaming)
 """
 
 import asyncio
@@ -24,13 +24,24 @@ except ImportError:
     YTDLP_AVAILABLE = False
     logger.warning("yt-dlp not available")
 
+try:
+    from pytgcalls import PyTgCalls
+    PYTGCALLS_AVAILABLE = True
+except ImportError:
+    PYTGCALLS_AVAILABLE = False
+    logger.warning("py-tgcalls not available - install with: pip install py-tgcalls")
+
 class MusicManager:
-    """Simple music manager - download and send audio"""
+    """Music manager with voice chat streaming support"""
 
     def __init__(self, client):
         self.client = client
         self.download_path = Path(config.DOWNLOAD_PATH)
         self.download_path.mkdir(exist_ok=True)
+
+        # PyTgCalls instance
+        self.pytgcalls = None
+        self.streaming_available = PYTGCALLS_AVAILABLE
 
         # Queue per chat
         self.queues: Dict[int, List[Dict]] = {}
@@ -38,16 +49,44 @@ class MusicManager:
         # Currently playing
         self.current_song: Dict[int, Dict] = {}
 
+        # Active voice chats
+        self.active_calls: Dict[int, bool] = {}
+
         # Rate limiting
         self.last_request: Dict[int, float] = {}
 
+        # Initialize PyTgCalls if available
+        if self.streaming_available:
+            try:
+                self.pytgcalls = PyTgCalls(client)
+                logger.info("PyTgCalls initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize PyTgCalls: {e}")
+                self.streaming_available = False
+
     async def start(self):
         """Start music manager"""
-        logger.info("Simple music manager ready (download mode)")
+        if self.pytgcalls and self.streaming_available:
+            try:
+                await self.pytgcalls.start()
+                logger.info("🎵 Music streaming system ready (voice chat mode)")
+            except Exception as e:
+                logger.error(f"Failed to start PyTgCalls: {e}")
+                self.streaming_available = False
+
+        if not self.streaming_available:
+            logger.info("🎵 Music system ready (download mode - no streaming)")
 
     async def stop(self):
-        """Stop music manager"""
-        pass
+        """Stop music manager and leave all voice chats"""
+        if self.pytgcalls:
+            try:
+                # Leave all active voice chats
+                for chat_id in list(self.active_calls.keys()):
+                    await self.leave_voice_chat(chat_id)
+                logger.info("Stopped music manager")
+            except Exception as e:
+                logger.error(f"Error stopping music manager: {e}")
 
     async def search_song(self, query: str) -> Optional[Dict]:
         """Search for song on YouTube"""
@@ -133,7 +172,7 @@ class MusicManager:
             return None
 
     async def play_stream(self, chat_id: int, query: str, requester_id: int) -> Dict:
-        """Download and send audio to chat"""
+        """Play audio in voice chat (streaming mode) or download if streaming unavailable"""
         # Rate limiting
         current_time = time.time()
         if requester_id in self.last_request:
@@ -151,15 +190,61 @@ class MusicManager:
             if not song_info:
                 return {'success': False, 'error': 'Song not found'}
 
-            # Check if queue exists and has songs
+            # STREAMING MODE - if py-tgcalls available
+            if self.streaming_available and self.pytgcalls:
+                # Check if already playing in this chat
+                if chat_id in self.active_calls and self.active_calls[chat_id]:
+                    # Add to queue
+                    if chat_id not in self.queues:
+                        self.queues[chat_id] = []
+                    self.queues[chat_id].append(song_info)
+                    return {
+                        'success': True,
+                        'queued': True,
+                        'position': len(self.queues[chat_id]),
+                        'song': song_info,
+                        'streaming': True
+                    }
+
+                # Join voice chat and play
+                try:
+                    # Use webpage_url for streaming (YouTube URL)
+                    stream_url = song_info.get('webpage_url') or song_info.get('url')
+
+                    await self.pytgcalls.play(
+                        chat_id,
+                        stream_url
+                    )
+
+                    self.active_calls[chat_id] = True
+                    self.current_song[chat_id] = song_info
+
+                    logger.info(f"Started streaming in chat {chat_id}: {song_info['title']}")
+
+                    return {
+                        'success': True,
+                        'song': song_info,
+                        'streaming': True,
+                        'joined_vc': True
+                    }
+
+                except Exception as e:
+                    logger.error(f"Error starting stream: {e}")
+                    # Fallback to download mode
+                    self.streaming_available = False
+
+            # DOWNLOAD MODE - fallback if streaming not available
+            logger.info("Using download mode (streaming not available)")
+
+            # Check if queue exists
             if chat_id in self.queues and len(self.queues[chat_id]) > 0:
-                # Add to queue
                 self.queues[chat_id].append(song_info)
                 return {
                     'success': True,
                     'queued': True,
                     'position': len(self.queues[chat_id]),
-                    'song': song_info
+                    'song': song_info,
+                    'streaming': False
                 }
 
             # Download audio
@@ -168,7 +253,6 @@ class MusicManager:
             if not file_path:
                 return {'success': False, 'error': 'Failed to download audio'}
 
-            # Save as current song
             self.current_song[chat_id] = {
                 **song_info,
                 'file_path': file_path
@@ -177,7 +261,8 @@ class MusicManager:
             return {
                 'success': True,
                 'song': song_info,
-                'file_path': file_path
+                'file_path': file_path,
+                'streaming': False
             }
 
         except Exception as e:
@@ -185,23 +270,54 @@ class MusicManager:
             return {'success': False, 'error': str(e)}
 
     async def stop_stream(self, chat_id: int) -> bool:
-        """Clear queue and current song"""
+        """Stop stream and leave voice chat"""
         try:
+            # Leave voice chat if in streaming mode
+            if self.streaming_available and chat_id in self.active_calls:
+                await self.leave_voice_chat(chat_id)
+
+            # Clear queue and current song
             if chat_id in self.queues:
                 self.queues[chat_id].clear()
             if chat_id in self.current_song:
                 del self.current_song[chat_id]
+
             return True
         except Exception as e:
             logger.error(f"Error stopping: {e}")
             return False
 
+    async def leave_voice_chat(self, chat_id: int):
+        """Leave voice chat"""
+        try:
+            if self.pytgcalls and chat_id in self.active_calls:
+                await self.pytgcalls.leave_call(chat_id)
+                self.active_calls[chat_id] = False
+                del self.active_calls[chat_id]
+                logger.info(f"Left voice chat in {chat_id}")
+        except Exception as e:
+            logger.error(f"Error leaving voice chat: {e}")
+
     async def pause_stream(self, chat_id: int) -> bool:
-        """Not supported in download mode"""
+        """Pause current stream"""
+        try:
+            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
+                await self.pytgcalls.pause_stream(chat_id)
+                logger.info(f"Paused stream in {chat_id}")
+                return True
+        except Exception as e:
+            logger.error(f"Error pausing: {e}")
         return False
 
     async def resume_stream(self, chat_id: int) -> bool:
-        """Not supported in download mode"""
+        """Resume paused stream"""
+        try:
+            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
+                await self.pytgcalls.resume_stream(chat_id)
+                logger.info(f"Resumed stream in {chat_id}")
+                return True
+        except Exception as e:
+            logger.error(f"Error resuming: {e}")
         return False
 
     def get_current_song(self, chat_id: int) -> Optional[Dict]:
@@ -213,9 +329,11 @@ class MusicManager:
         return self.queues.get(chat_id, [])
 
     def get_stream_stats(self) -> Dict:
-        """Get stats"""
+        """Get streaming statistics"""
         return {
             'active_songs': len(self.current_song),
+            'active_calls': len(self.active_calls),
             'total_queued': sum(len(q) for q in self.queues.values()),
-            'mode': 'download'
+            'mode': 'streaming' if self.streaming_available else 'download',
+            'streaming_available': self.streaming_available
         }
