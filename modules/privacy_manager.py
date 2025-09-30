@@ -10,6 +10,7 @@ Version: 2.0.0 Python
 import asyncio
 import logging
 from typing import Dict, Set, Optional
+import config
 
 logger = logging.getLogger(__name__)
 

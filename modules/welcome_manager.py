@@ -11,9 +11,10 @@ import asyncio
 import logging
 import json
 import aiofiles
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from pathlib import Path
 from telethon import Button
+import config
 
 logger = logging.getLogger(__name__)
 

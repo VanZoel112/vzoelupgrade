@@ -14,6 +14,7 @@ import time
 from typing import Dict, Set, List, Optional
 from pathlib import Path
 from telethon.tl.types import MessageEntityMentionName
+import config
 
 logger = logging.getLogger(__name__)
 

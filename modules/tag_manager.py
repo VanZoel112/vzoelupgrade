@@ -11,6 +11,7 @@ import asyncio
 import logging
 from typing import Dict, List, Set, Optional
 from telethon.tl.types import Channel, Chat
+import config
 
 logger = logging.getLogger(__name__)
 
