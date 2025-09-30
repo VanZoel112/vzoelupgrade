@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 import config
 
 # Import Telethon
-from telethon import TelegramClient, events, Button
+from telethon import TelegramClient, events, Button, types
 from telethon.tl.types import MessageEntityMentionName
 
 # Import VBot modules
@@ -78,7 +78,7 @@ class VBot:
             from core.music_manager import MusicManager
             self.music_manager = MusicManager(self.client)
             await self.music_manager.start()
-            logger.info("🎵 Music streaming system ready")
+            logger.info("🎵 Music download system ready")
 
             # Setup event handlers
             self._setup_event_handlers()
@@ -230,7 +230,7 @@ class VBot:
             logger.error(f"Error routing command {command}: {e}")
 
     async def _handle_music_command(self, message, parts):
-        """Handle music streaming commands"""
+        """Handle music download commands"""
         if not config.MUSIC_ENABLED:
             await message.reply("🎵 Music system is disabled")
             return
@@ -247,7 +247,7 @@ class VBot:
             query = ' '.join(parts[1:])
 
             # Show processing message
-            status_msg = await message.reply("🔍 Searching and preparing stream...")
+            status_msg = await message.reply("🔍 Searching and downloading audio...")
 
             # Play stream
             result = await self.music_manager.play_stream(
@@ -267,16 +267,29 @@ class VBot:
                         f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}"
                     )
                 else:
-                    # Now streaming
-                    await status_msg.edit(
-                        f"🎵 **Now Streaming in Voice Chat**\n\n"
-                        f"🎶 **{song['title']}**\n"
-                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n\n"
-                        f"**Controls:**\n"
-                        f"/pause - Pause stream\n"
-                        f"/resume - Resume stream\n"
-                        f"/stop - Stop and leave VC"
-                    )
+                    # Update status to uploading
+                    await status_msg.edit("⬆️ Uploading audio...")
+
+                    # Send audio file
+                    file_path = result.get('file_path')
+                    if file_path:
+                        await self.client.send_file(
+                            message.chat_id,
+                            file_path,
+                            caption=f"🎵 **{song['title']}**\n⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}",
+                            reply_to=message.id,
+                            attributes=[
+                                types.DocumentAttributeAudio(
+                                    duration=song.get('duration', 0),
+                                    title=song['title'],
+                                    performer='VBot Music'
+                                )
+                            ]
+                        )
+                        # Delete status message after sending
+                        await status_msg.delete()
+                    else:
+                        await status_msg.edit("❌ Failed to download audio file")
             else:
                 await status_msg.edit(f"❌ Error: {result.get('error', 'Unknown error')}")
 
@@ -292,7 +305,7 @@ class VBot:
         try:
             success = await self.music_manager.stop_stream(message.chat_id)
             if success:
-                await message.reply("⏹️ Stopped streaming and left voice chat")
+                await message.reply("⏹️ Stopped music and cleared queue")
             else:
                 await message.reply("❌ No active stream in this chat")
         except Exception as e:
@@ -300,31 +313,11 @@ class VBot:
 
     async def _handle_pause_command(self, message):
         """Handle /pause command"""
-        if not self.music_manager:
-            return
-
-        try:
-            success = await self.music_manager.pause_stream(message.chat_id)
-            if success:
-                await message.reply("⏸️ Paused stream")
-            else:
-                await message.reply("❌ No active stream to pause")
-        except Exception as e:
-            await message.reply(f"❌ Error pausing stream: {str(e)}")
+        await message.reply("❌ Pause not available in download mode")
 
     async def _handle_resume_command(self, message):
         """Handle /resume command"""
-        if not self.music_manager:
-            return
-
-        try:
-            success = await self.music_manager.resume_stream(message.chat_id)
-            if success:
-                await message.reply("▶️ Resumed stream")
-            else:
-                await message.reply("❌ No paused stream to resume")
-        except Exception as e:
-            await message.reply(f"❌ Error resuming stream: {str(e)}")
+        await message.reply("❌ Resume not available in download mode")
 
     async def _handle_queue_command(self, message):
         """Handle /queue command"""
