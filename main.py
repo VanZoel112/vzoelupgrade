@@ -168,8 +168,14 @@ class VBot:
     async def _route_command(self, message, command, parts):
         """Route commands to appropriate handlers"""
         try:
+            # Basic bot commands
+            if command in ['/start', '/help']:
+                await self._handle_start_command(message)
+            elif command == '/about':
+                await self._handle_about_command(message)
+
             # Music commands
-            if command in ['/play', '/p']:
+            elif command in ['/play', '/p', '/music']:
                 await self._handle_music_command(message, parts)
 
             # Lock commands
@@ -204,7 +210,7 @@ class VBot:
 
             else:
                 # Unknown command
-                await message.reply(f"❓ Unknown command: {command}")
+                await message.reply(f"❓ Unknown command: {command}\n\nType /start to see available commands.")
 
         except Exception as e:
             logger.error(f"Error routing command {command}: {e}")
@@ -365,6 +371,67 @@ class VBot:
 
         except Exception as e:
             await message.reply(f"❌ Error starting tag: {str(e)}")
+
+    async def _handle_start_command(self, message):
+        """Handle /start command"""
+        user = await message.get_sender()
+        welcome_text = f"""
+👋 **Welcome {user.first_name}!**
+
+🎵 **VBot Python - Music & Management Bot**
+
+I'm a feature-rich Telegram bot with:
+• 🎵 Music player with yt-dlp integration
+• 🔒 User lock system with auto-delete
+• 🏷️ Progressive tag all members
+• 👋 Welcome system for new members
+• ⚙️ Multiple permission levels
+
+**Quick Start:**
+• /play <song> - Play music
+• /help - See all commands
+• #help - Public commands help
+
+**Permission Levels:**
+/ - Admin commands (group admins)
+. - Developer commands (bot devs)
+# - Public commands (everyone)
+
+Type /help to see all available commands!
+"""
+        await message.reply(welcome_text)
+
+    async def _handle_about_command(self, message):
+        """Handle /about command"""
+        about_text = """
+ℹ️ **About VBot Python**
+
+**Version:** 2.0.0 Python
+**Author:** VanZoel112
+**Repository:** github.com/VanZoel112/vzoelupgrade
+
+**Features:**
+✅ Music System (yt-dlp)
+✅ Lock/Unlock System
+✅ Tag All Members
+✅ Welcome System
+✅ Premium Emoji Support
+✅ GitHub Auto-Sync
+✅ Privacy System
+✅ Multi-level Permissions
+
+**Tech Stack:**
+• Python 3.12+
+• Telethon
+• yt-dlp
+• AsyncIO
+
+**License:** MIT
+**Support:** @VanZoel112
+
+Made with ❤️ by Vzoel Fox
+"""
+        await message.reply(about_text)
 
     async def _handle_help_command(self, message):
         """Handle #help command"""
