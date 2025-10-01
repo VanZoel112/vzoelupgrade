@@ -274,6 +274,18 @@ class VBot:
                 # Handled by plugin
                 pass
 
+            # Legacy aliases (backward compatibility)
+            elif command in ['/play', '/p', '/music']:
+                await self._handle_music_command(message, parts)
+            elif command in ['/stop', '/end']:
+                await self._handle_stop_command(message)
+            elif command == '/pause':
+                await self._handle_pause_command(message)
+            elif command == '/resume':
+                await self._handle_resume_command(message)
+            elif command in ['/queue', '/q']:
+                await self._handle_queue_command(message)
+
             # Admin tag commands (/ prefix)
             elif command in ['/tagall', '/tag']:
                 await self._handle_tag_command(message, parts)

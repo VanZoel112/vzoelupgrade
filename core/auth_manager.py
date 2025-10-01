@@ -116,6 +116,14 @@ class AuthManager:
 
     async def check_permissions(self, client, user_id: int, chat_id: int, command_text: str) -> bool:
         """Main permission checker for commands"""
+        # Extract command from text
+        cmd = command_text.split()[0].lower() if command_text else ""
+
+        # Music commands are always public (backward compatibility)
+        music_commands = ['/play', '/p', '/music', '/pause', '/resume', '/stop', '/end', '/queue', '/q']
+        if cmd in music_commands:
+            return True
+
         command_type = self.get_command_type(command_text)
 
         if command_type == "owner":
