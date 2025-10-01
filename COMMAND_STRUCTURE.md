@@ -11,6 +11,8 @@ Commands untuk management bot dan user permissions.
 - `+setwelcome off` - Disable welcome
 - `+add @username` atau `+add` (reply) - Give user permission to use `/` commands
 - `+del @username` atau `+del` (reply) - Remove user permission
+- `+backup` - Manual database backup to GitHub
+- `+backup "message"` - Backup with custom commit message
 
 **Permission:** Hanya OWNER_ID dan DEVELOPER_IDS
 
@@ -90,14 +92,14 @@ Public commands yang bisa digunakan semua orang.
 - [x] Integrate Database with existing managers
 - [x] Update command routing for new prefixes
 
-### Phase 2: Commands ⚠️ PARTIAL (New commands done, legacy integration pending)
+### Phase 2: Commands ✅ COMPLETE
 - [x] Implement `+add` and `+del` commands
 - [x] Implement `/pm` and `/dm` commands
 - [x] Implement `+setwelcome` command
 - [x] Implement `/cancel` command
 - [x] Implement `/locklist` command
-- [ ] Update `/lock` to use database (still uses LockManager)
-- [ ] Update welcome system to use database (still uses WelcomeManager)
+- [x] Update `/lock` to use database (migrated to Database)
+- [x] Update welcome system to use database (migrated to Database)
 
 ### Phase 3: UI/UX ✅ COMPLETE
 - [x] Add inline buttons for `.` commands
@@ -105,10 +107,11 @@ Public commands yang bisa digunakan semua orang.
 - [x] Implement callback handlers for music buttons
 - [ ] Update help command with permission info (optional)
 
-### Phase 4: Backup ❌ NOT STARTED
-- [ ] Implement GitHub auto-backup
-- [ ] Add manual backup command
-- [ ] Add restore functionality
+### Phase 4: Backup ✅ COMPLETE
+- [x] Implement GitHub auto-backup (5-second debounce)
+- [x] Add manual backup command (+backup)
+- [x] Backup stats and monitoring
+- [ ] Add restore functionality (optional)
 
 ## Notes
 
