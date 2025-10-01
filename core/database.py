@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database Manager - JSON-based database with GitHub backup
+Database Manager - JSON-based database with auto-backup
 Stores all bot data including permissions, settings, locks, etc.
 
 Author: VanZoel112
@@ -251,17 +251,17 @@ class Database:
         self._save()
 
     # ==============================================
-    # GITHUB AUTO-BACKUP
+    # AUTO-BACKUP SYSTEM
     # ==============================================
 
     async def _delayed_backup(self):
         """Delayed backup with debounce (5 seconds)"""
         await asyncio.sleep(5)
-        await self.backup_to_github()
+        await self.backup_to_repository()
         self.backup_pending = False
 
-    async def backup_to_github(self) -> bool:
-        """Backup database to GitHub"""
+    async def backup_to_repository(self) -> bool:
+        """Backup database to remote repository"""
         try:
             # Check if git is configured
             result = subprocess.run(
@@ -313,15 +313,15 @@ class Database:
             )
 
             self.last_backup = datetime.now()
-            logger.info(f"✅ Database backed up to GitHub")
+            logger.info(f"Database synchronized to remote repository")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to backup to GitHub: {e}")
+            logger.error(f"Backup synchronization failed: {e}")
             return False
 
     async def manual_backup(self, commit_message: str = None) -> bool:
-        """Manual backup to GitHub with custom commit message"""
+        """Manual backup to remote repository with custom commit message"""
         try:
             # Add database file
             subprocess.run(
@@ -350,14 +350,14 @@ class Database:
             )
 
             if result.returncode == 0:
-                logger.info("✅ Manual backup successful")
+                logger.info("Manual backup completed successfully")
                 return True
             else:
-                logger.error(f"Failed to push: {result.stderr}")
+                logger.error(f"Push operation failed: {result.stderr}")
                 return False
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"Manual backup failed: {e}")
+            logger.error(f"Manual backup operation failed: {e}")
             return False
 
     def get_backup_stats(self) -> Dict:

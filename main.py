@@ -325,7 +325,7 @@ class VBot:
             query = ' '.join(parts[1:])
 
             # Show processing message
-            status_msg = await message.reply("🔍 Searching and downloading audio...")
+            status_msg = await message.reply("**Processing media request...**")
 
             # Play stream
             result = await self.music_manager.play_stream(
@@ -609,111 +609,98 @@ class VBot:
         """Handle /start command"""
         user = await message.get_sender()
         welcome_text = f"""
-👋 **Welcome {user.first_name}!**
+**Welcome, {user.first_name}**
 
-🎵 **VBot Python - Music & Management Bot**
+VBot - Advanced Telegram Management System
+Powered by Vzoel Fox's
 
-I'm a feature-rich Telegram bot with:
-• 🎵 Music player with yt-dlp integration
-• 🔒 User lock system with auto-delete
-• 🏷️ Progressive tag all members
-• 👋 Welcome system for new members
-• ⚙️ Multiple permission levels
+**Core Features**
+• Music streaming and playback control
+• Advanced user management system
+• Smart tagging and moderation tools
+• Customizable welcome automation
+• Multi-level permission architecture
 
-**Quick Commands:**
-• /play <song> - Play music from YouTube
-• /tagall <text> - Mention all group members
-• /lock @user - Lock user (auto-delete their messages)
-• /welcome <text> - Set welcome message for new members
+**Quick Start**
+/help - View all available commands
+/about - System information
 
-**More Commands:**
-📁 /help - Show detailed command list
-ℹ️ /about - Bot information
-📊 .stats - Bot statistics (developers only)
+**Permission Levels**
++ Owner commands (system management)
+/ Admin commands (group moderation)
+. Public commands (all users)
 
-**Permission Levels:**
-/ - Admin commands (for group admins)
-. - Developer commands (bot developers only)
-# - Public commands (everyone can use)
-
-**Support:** @VZLfxs
+Contact: @VZLfxs
 """
         await message.reply(welcome_text)
 
     async def _handle_about_command(self, message):
         """Handle /about command"""
         about_text = """
-ℹ️ **About VBot Python**
+**VBot System Information**
 
-**Version:** 2.0.0 Python
-**Developer:** Vzoel Fox
-**Built with:** Python & Telethon
+Version: 2.0.0 Python Edition
+Developer: Vzoel Fox
+Architecture: Python + Telethon
 
-**Features:**
-✅ Music System (YouTube)
-✅ Lock/Unlock System
-✅ Tag All Members
-✅ Welcome System
-✅ Premium Emoji Support
-✅ Auto Backup System
-✅ Privacy Mode
-✅ Multi-level Permissions
+**System Modules**
+Music streaming engine
+User management system
+Automated moderation tools
+Welcome automation
+Permission management
+Database persistence
 
-**Tech Stack:**
-• Python 3.12+
-• Telethon
-• yt-dlp
-• AsyncIO
+**Technology Stack**
+Python 3.12+
+Telethon MTProto
+yt-dlp media engine
+Async/await architecture
 
-**Contact:** @VZLfxs
-
-Made with ❤️ by Vzoel Fox
+Developed by Vzoel Fox
+Contact: @VZLfxs
 """
         await message.reply(about_text)
 
     async def _handle_help_command(self, message):
         """Handle #help command"""
         help_text = """
-📚 **VBot Python - Complete Command List**
+**VBot Command Reference**
 
-**🎵 Music Commands:**
-• /play <song> - Play music from YouTube
-• /music <song> - Alias for /play
+**Owner Commands** (+ prefix)
++add <user> - Grant admin command access
++del <user> - Revoke admin command access
++setwelcome <text> - Configure welcome message
++backup - Create database backup
 
-**🔒 Lock System (Admin):**
-• /lock @user [reason] - Lock user (auto-delete their messages)
-• /unlock <user_id> - Unlock user
-• /locklist - Show all locked users
+**Admin Commands** (/ prefix)
+/pm <user> - Promote to admin list
+/dm <user> - Demote from admin list
+/tagall <text> - Tag all members
+/cancel - Stop ongoing tag operation
+/lock <user> - Enable auto-delete for user
+/unlock <user> - Disable auto-delete
+/locklist - View locked users
 
-**🏷️ Tag System (Admin):**
-• /tag <message> - Tag all group members
-• /tagall <message> - Alias for /tag
-• /ctag - Cancel ongoing tag process
+**Public Commands** (. prefix)
+.play <query> - Stream or download music
+.pause - Pause current playback
+.resume - Resume playback
+.stop - Stop and clear queue
+.queue - View music queue
 
-**👋 Welcome System (Admin/Dev):**
-• /welcome <message> - Set welcome message for new members
-• /setwelcome <message> - Alias for /welcome
+**Information**
+/start - System overview
+/about - Technical details
+/help - This command reference
 
-**📊 Developer Commands:**
-• .stats - Show bot statistics
-• .status - Alias for .stats
+**Permission Structure**
++ Commands require owner authorization
+/ Commands require admin or granted access
+. Commands available to all users
 
-**🌐 Public Commands:**
-• #help - Show this help
-• #rules - Show group rules
-• #session - Generate session string
-
-**ℹ️ General:**
-• /start - Welcome message
-• /help - Same as /start
-• /about - Bot information
-
-**💡 Permission Levels:**
-/ = Admin commands (group admins)
-. = Developer commands (bot devs only)
-# = Public commands (everyone)
-
-**🔧 Support:** @VZLfxs
+System developed by Vzoel Fox
+Contact: @VZLfxs
 """
         await message.reply(help_text)
 
@@ -725,26 +712,27 @@ Made with ❤️ by Vzoel Fox
                 'lock': self.lock_manager.get_lock_stats() if config.ENABLE_LOCK_SYSTEM else {},
                 'tag': self.tag_manager.get_tag_stats() if config.ENABLE_TAG_SYSTEM else {},
                 'welcome': self.welcome_manager.get_welcome_stats() if config.ENABLE_WELCOME_SYSTEM else {},
-                'github': self.github_sync.get_sync_stats() if config.ENABLE_GITHUB_SYNC else {},
                 'privacy': self.privacy_manager.get_privacy_stats() if config.ENABLE_PRIVACY_SYSTEM else {}
             }
 
-            stats_text = "📊 **VBot Statistics:**\n\n"
+            stats_text = "**System Statistics**\n\n"
 
             if stats['lock']:
-                stats_text += f"🔒 **Lock System:**\n"
-                stats_text += f"• Locked users: {stats['lock'].get('total_locked_users', 0)}\n"
-                stats_text += f"• Chats with locks: {stats['lock'].get('chats_with_locks', 0)}\n\n"
+                stats_text += f"**Lock System**\n"
+                stats_text += f"Locked users: {stats['lock'].get('total_locked_users', 0)}\n"
+                stats_text += f"Active chats: {stats['lock'].get('chats_with_locks', 0)}\n\n"
 
             if stats['music']:
-                stats_text += f"🎵 **Music System:**\n"
-                stats_text += f"• Downloaded files: {stats['music'].get('total_files', 0)}\n"
-                stats_text += f"• Storage used: {stats['music'].get('total_size_mb', 0)} MB\n\n"
+                stats_text += f"**Music System**\n"
+                stats_text += f"Cached files: {stats['music'].get('total_files', 0)}\n"
+                stats_text += f"Storage usage: {stats['music'].get('total_size_mb', 0)} MB\n\n"
 
-            if stats['github']:
-                stats_text += f"📁 **GitHub Sync:**\n"
-                stats_text += f"• Configured: {'Yes' if stats['github'].get('github_configured') else 'No'}\n"
-                stats_text += f"• Queue size: {stats['github'].get('queue_size', 0)}\n\n"
+            db_stats = self.database.get_stats()
+            stats_text += f"**Database**\n"
+            stats_text += f"Authorized users: {db_stats.get('authorized_users', 0)}\n"
+            stats_text += f"Database size: {db_stats.get('database_size', 0) / 1024:.2f} KB\n\n"
+
+            stats_text += "Vzoel Fox's VBot System"
 
             if config.ENABLE_PRIVACY_SYSTEM:
                 await self.privacy_manager.process_private_command(
@@ -754,7 +742,7 @@ Made with ❤️ by Vzoel Fox
                 await message.reply(stats_text)
 
         except Exception as e:
-            await message.reply(f"❌ Error getting stats: {str(e)}")
+            await message.reply(f"Error retrieving statistics: {str(e)}")
 
     async def _handle_add_permission_command(self, message, parts):
         """Handle +add command - authorize user for / commands"""
@@ -797,10 +785,10 @@ Made with ❤️ by Vzoel Fox
             self.database.add_permission(target_user_id, message.chat_id)
 
             response = (
-                f"✅ **Permission granted**\n\n"
+                f"**Access Granted**\n\n"
                 f"User: {target_username or target_user_id}\n"
                 f"ID: `{target_user_id}`\n\n"
-                f"This user can now use **/** commands in this chat."
+                f"Admin command access enabled for this chat."
             )
 
             await message.reply(response)
@@ -808,7 +796,7 @@ Made with ❤️ by Vzoel Fox
 
         except Exception as e:
             logger.error(f"Error in +add command: {e}")
-            await message.reply(f"❌ Error adding permission: {str(e)}")
+            await message.reply(f"Error: Unable to grant access - {str(e)}")
 
     async def _handle_del_permission_command(self, message, parts):
         """Handle +del command - remove user authorization"""
@@ -850,20 +838,20 @@ Made with ❤️ by Vzoel Fox
 
             if success:
                 response = (
-                    f"✅ **Permission revoked**\n\n"
+                    f"**Access Revoked**\n\n"
                     f"User: {target_username or target_user_id}\n"
                     f"ID: `{target_user_id}`\n\n"
-                    f"This user can no longer use **/** commands in this chat."
+                    f"Admin command access disabled for this chat."
                 )
             else:
-                response = f"⚠️ User {target_user_id} was not in the authorized list"
+                response = f"User {target_user_id} not found in authorization list"
 
             await message.reply(response)
             logger.info(f"Removed permission for user {target_user_id} in chat {message.chat_id}")
 
         except Exception as e:
             logger.error(f"Error in +del command: {e}")
-            await message.reply(f"❌ Error removing permission: {str(e)}")
+            await message.reply(f"Error: Unable to revoke access - {str(e)}")
 
     async def _handle_setwelcome_command(self, message, parts):
         """Handle +setwelcome command - configure welcome message"""
@@ -898,18 +886,18 @@ Made with ❤️ by Vzoel Fox
             self.database.set_welcome(message.chat_id, welcome_text, True)
 
             await message.reply(
-                f"✅ **Welcome message updated**\n\n"
-                f"**Preview:**\n{welcome_text}\n\n"
-                f"**Variables:**\n"
-                f"• {{user}} - User's first name\n"
-                f"• {{mention}} - Mention the user\n"
-                f"• {{chat}} - Chat name"
+                f"**Welcome Configuration Updated**\n\n"
+                f"Preview:\n{welcome_text}\n\n"
+                f"Available variables:\n"
+                f"{{user}} - User first name\n"
+                f"{{mention}} - User mention\n"
+                f"{{chat}} - Chat name"
             )
             logger.info(f"Updated welcome message for chat {message.chat_id}")
 
         except Exception as e:
             logger.error(f"Error in +setwelcome command: {e}")
-            await message.reply(f"❌ Error setting welcome: {str(e)}")
+            await message.reply(f"Error: Unable to update welcome - {str(e)}")
 
     async def _handle_promote_command(self, message, parts):
         """Handle /pm command - promote user to bot-managed admin list"""
@@ -946,15 +934,15 @@ Made with ❤️ by Vzoel Fox
             self.database.add_admin(message.chat_id, target_user_id)
 
             await message.reply(
-                f"✅ **User promoted**\n\n"
+                f"**User Promoted**\n\n"
                 f"User: {target_username or target_user_id}\n"
                 f"ID: `{target_user_id}`\n\n"
-                f"This user can now use **/** commands via bot-managed permissions."
+                f"Admin permissions granted via system management."
             )
 
         except Exception as e:
             logger.error(f"Error in /pm command: {e}")
-            await message.reply(f"❌ Error promoting user: {str(e)}")
+            await message.reply(f"Error: Promotion failed - {str(e)}")
 
     async def _handle_demote_command(self, message, parts):
         """Handle /dm command - demote user from bot-managed admin list"""
@@ -1055,43 +1043,43 @@ Made with ❤️ by Vzoel Fox
     async def _handle_rules_command(self, message):
         """Handle #rules command"""
         rules_text = """
-📜 **Group Rules**
+**Group Guidelines**
 
-1. Be respectful to all members
-2. No spam or flooding
-3. No NSFW content
-4. Follow Telegram's Terms of Service
-5. Use appropriate language
+1. Maintain respectful communication
+2. Avoid spam and excessive messaging
+3. Keep content appropriate for all ages
+4. Comply with Telegram Terms of Service
+5. Use commands responsibly
 
-For support: @VZLfxs
+Contact: @VZLfxs
 """
         await message.reply(rules_text)
 
     async def _handle_session_command(self, message):
         """Handle #session command"""
         session_text = """
-🔐 **Session String Generator**
+**Session String Configuration**
 
-To generate a session string for the assistant account:
+Generate session string for assistant account:
 
-**Method 1: Terminal (recommended)**
-```bash
-python3 genstring.py
-```
+**Terminal Method**
+Execute: python3 genstring.py
 
-**Method 2: In-bot**
-Send `.gensession` command in private chat with the bot
+**In-Bot Method**
+Command: .gensession (private chat only)
 
-**Note:** The session can be from any Telegram account (user account, not bot). You just need valid API_ID and API_HASH.
+**Technical Note**
+Session can utilize any Telegram user account.
+Requires valid API_ID and API_HASH credentials.
 
-**Support:** @VZLfxs
+Contact: @VZLfxs
 """
         await message.reply(session_text)
 
     async def _handle_backup_command(self, message, parts):
-        """Handle +backup command - manual database backup to GitHub"""
+        """Handle +backup command - manual database backup"""
         try:
-            status_msg = await message.reply("📦 **Creating backup...**")
+            status_msg = await message.reply("**Processing backup...**")
 
             # Get custom commit message if provided
             commit_message = None
@@ -1107,25 +1095,25 @@ Send `.gensession` command in private chat with the bot
                 last_backup = stats.get('last_backup', 'Never')
 
                 await status_msg.edit(
-                    f"✅ **Database Backup Complete**\n\n"
-                    f"📁 Database backed up to GitHub\n"
-                    f"⏰ Last backup: {last_backup}\n"
-                    f"📊 Database size: {self.database.db_path.stat().st_size / 1024:.2f} KB\n\n"
-                    f"**Auto-backup:** {'Enabled' if stats.get('auto_backup_enabled') else 'Disabled'}"
+                    f"**Backup Complete**\n\n"
+                    f"Database synchronized to remote repository\n"
+                    f"Last backup: {last_backup}\n"
+                    f"Database size: {self.database.db_path.stat().st_size / 1024:.2f} KB\n\n"
+                    f"Auto-backup: {'Enabled' if stats.get('auto_backup_enabled') else 'Disabled'}"
                 )
             else:
                 await status_msg.edit(
-                    "❌ **Backup Failed**\n\n"
-                    "Please check:\n"
-                    "• Git is configured\n"
-                    "• Remote repository is set\n"
-                    "• You have push access\n\n"
-                    "Check logs for details."
+                    "**Backup Failed**\n\n"
+                    "Verification checklist:\n"
+                    "- Git configuration\n"
+                    "- Remote repository access\n"
+                    "- Push permissions\n\n"
+                    "Review system logs for details."
                 )
 
         except Exception as e:
             logger.error(f"Error in +backup command: {e}")
-            await message.reply(f"❌ Backup error: {str(e)}")
+            await message.reply(f"Backup error: {str(e)}")
 
     async def _handle_callback(self, event):
         """Handle callback queries"""

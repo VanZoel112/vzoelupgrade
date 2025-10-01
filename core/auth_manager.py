@@ -135,13 +135,13 @@ class AuthManager:
     def get_permission_error_message(self, command_type: str) -> str:
         """Get appropriate error message for permission denial"""
         if command_type == "owner":
-            return "⚠️ Owner command access denied. Only bot owner/developers can use + commands."
+            return "Access denied. Owner-level authorization required."
         elif command_type == "admin":
-            return "⚠️ Admin command access denied. Only admins and authorized users can use / commands."
+            return "Access denied. Admin authorization required."
         elif command_type == "public":
-            return "⚠️ Command access denied."
+            return "Access denied."
         else:
-            return "⚠️ Unknown command type."
+            return "Unknown command type."
 
     async def clear_admin_cache(self, chat_id: Optional[int] = None):
         """Clear admin cache for specific chat or all chats"""
