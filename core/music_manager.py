@@ -26,13 +26,14 @@ except ImportError:
 
 try:
     from pytgcalls import PyTgCalls
-    from pytgcalls.types import MediaStream, AudioQuality
+    from pytgcalls.types import MediaStream, AudioQuality, GroupCallConfig
     PYTGCALLS_AVAILABLE = True
 except ImportError:
     PYTGCALLS_AVAILABLE = False
     logger.warning("py-tgcalls not available - install with: pip install py-tgcalls")
     MediaStream = None
     AudioQuality = None
+    GroupCallConfig = None
 
 class MusicManager:
     """Music manager with voice chat streaming support"""
@@ -57,6 +58,10 @@ class MusicManager:
 
         # Rate limiting
         self.last_request: Dict[int, float] = {}
+
+        # Cache for join_as entity
+        self._join_as_cache = None
+        self._join_as_resolved = False
 
         # Initialize PyTgCalls if available
         if self.streaming_available:
@@ -230,10 +235,14 @@ class MusicManager:
                         ytdlp_parameters=ytdlp_parameters
                     )
 
+                    # Build group call config
+                    group_config = await self._build_group_call_config(chat_id)
+
                     # Play in voice chat
                     await self.pytgcalls.play(
                         chat_id,
-                        media_stream
+                        media_stream,
+                        config=group_config
                     )
 
                     self.active_calls[chat_id] = True
@@ -312,11 +321,52 @@ class MusicManager:
         try:
             if self.pytgcalls and chat_id in self.active_calls:
                 await self.pytgcalls.leave_call(chat_id)
-                self.active_calls[chat_id] = False
-                del self.active_calls[chat_id]
+                self.active_calls.pop(chat_id, None)
                 logger.info(f"Left voice chat in {chat_id}")
         except Exception as e:
             logger.error(f"Error leaving voice chat: {e}")
+
+    async def _build_group_call_config(self, chat_id: int) -> Optional['GroupCallConfig']:
+        """Build group call configuration with optional join_as resolution"""
+        if not self.pytgcalls or not GroupCallConfig:
+            return None
+
+        auto_start = getattr(config, 'VOICE_CHAT_AUTO_START', True)
+        config_kwargs = {'auto_start': auto_start}
+
+        join_as = await self._get_join_as_entity()
+        if join_as is not None:
+            config_kwargs['join_as'] = join_as
+
+        try:
+            return GroupCallConfig(**config_kwargs)
+        except Exception as exc:
+            logger.warning(f"Failed to build GroupCallConfig for chat {chat_id}: {exc}")
+            return GroupCallConfig()
+
+    async def _get_join_as_entity(self):
+        """Resolve VOICE_CHAT_JOIN_AS setting to an entity once"""
+        if self._join_as_resolved:
+            return self._join_as_cache
+
+        self._join_as_resolved = True
+        join_as = getattr(config, 'VOICE_CHAT_JOIN_AS', None)
+
+        if join_as in (None, ''):
+            self._join_as_cache = None
+            return None
+
+        try:
+            if isinstance(join_as, str) and join_as.lower() in {'me', 'self'}:
+                entity = await self.client.get_me()
+            else:
+                entity = await self.client.get_entity(join_as)
+            self._join_as_cache = entity
+        except Exception as exc:
+            logger.warning(f"Failed to resolve VOICE_CHAT_JOIN_AS='{join_as}': {exc}")
+            self._join_as_cache = None
+
+        return self._join_as_cache
 
     async def pause_stream(self, chat_id: int) -> bool:
         """Pause current stream"""
