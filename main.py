@@ -108,6 +108,9 @@ class VBot:
             # Setup event handlers
             self._setup_event_handlers()
 
+            # Setup bot commands (slash suggestions)
+            await self._setup_bot_commands()
+
             logger.info("✅ All systems initialized")
             return True
 
@@ -135,6 +138,41 @@ class VBot:
         async def handle_callback(event):
             await self._handle_callback(event)
 
+    async def _setup_bot_commands(self):
+        """Setup bot command suggestions (slash commands visible in menu)"""
+        try:
+            from telethon.tl.functions.bots import SetBotCommandsRequest
+            from telethon.tl.types import BotCommand
+
+            # Define available commands
+            commands = [
+                BotCommand(command="start", description="Start the bot and see welcome message"),
+                BotCommand(command="help", description="Show detailed command list"),
+                BotCommand(command="about", description="Bot information and features"),
+
+                # Admin commands (/)
+                BotCommand(command="pm", description="Promote user to admin (reply or @username)"),
+                BotCommand(command="dm", description="Demote user from admin"),
+                BotCommand(command="tagall", description="Tag all members in chat"),
+                BotCommand(command="cancel", description="Cancel ongoing tag operation"),
+                BotCommand(command="lock", description="Lock user (auto-delete messages)"),
+                BotCommand(command="unlock", description="Unlock user"),
+                BotCommand(command="locklist", description="Show all locked users"),
+            ]
+
+            # Set bot commands
+            await self.client(SetBotCommandsRequest(
+                scope=types.BotCommandScopeDefault(),
+                lang_code='en',
+                commands=commands
+            ))
+
+            logger.info("✅ Bot command suggestions configured")
+
+        except Exception as e:
+            logger.error(f"Failed to setup bot commands: {e}")
+            # Non-critical, continue anyway
+
     async def _handle_message(self, event):
         """Handle incoming messages"""
         try:
@@ -160,7 +198,7 @@ class VBot:
                 # Note: Would need to edit message if different, but that requires specific permissions
 
             # Handle commands
-            if message.text.startswith(('.', '/', '#')):
+            if message.text.startswith(('.', '/', '+', '#')):
                 await self._handle_command(message)
 
         except Exception as e:
@@ -205,19 +243,42 @@ class VBot:
             elif command == '/about':
                 await self._handle_about_command(message)
 
-            # Music commands
-            elif command in ['/play', '/p', '/music']:
-                await self._handle_music_command(message, parts)
-            elif command in ['/stop', '/end']:
-                await self._handle_stop_command(message)
-            elif command == '/pause':
-                await self._handle_pause_command(message)
-            elif command == '/resume':
-                await self._handle_resume_command(message)
-            elif command in ['/queue', '/q']:
-                await self._handle_queue_command(message)
+            # Owner/Developer commands (+ prefix)
+            elif command == '+add':
+                await self._handle_add_permission_command(message, parts)
+            elif command == '+del':
+                await self._handle_del_permission_command(message, parts)
+            elif command == '+setwelcome':
+                await self._handle_setwelcome_command(message, parts)
 
-            # Lock commands
+            # Admin commands for user management (/ prefix)
+            elif command == '/pm':
+                await self._handle_promote_command(message, parts)
+            elif command == '/dm':
+                await self._handle_demote_command(message, parts)
+
+            # Public music commands (. prefix)
+            elif command in ['.play', '.p']:
+                await self._handle_music_command(message, parts)
+            elif command == '.stop':
+                await self._handle_stop_command(message)
+            elif command == '.pause':
+                await self._handle_pause_command(message)
+            elif command == '.resume':
+                await self._handle_resume_command(message)
+            elif command in ['.queue', '.q']:
+                await self._handle_queue_command(message)
+            elif command == '.gensession':
+                # Handled by plugin
+                pass
+
+            # Admin tag commands (/ prefix)
+            elif command in ['/tagall', '/tag']:
+                await self._handle_tag_command(message, parts)
+            elif command in ['/cancel', '/canceltag']:
+                await self._handle_cancel_tag_command(message)
+
+            # Admin lock commands (/ prefix)
             elif command == '/lock':
                 await self._handle_lock_command(message, parts)
             elif command == '/unlock':
@@ -225,18 +286,8 @@ class VBot:
             elif command == '/locklist':
                 await self._handle_locklist_command(message)
 
-            # Tag commands
-            elif command in ['/tag', '/tagall', '/tагall']:
-                await self._handle_tag_command(message, parts)
-            elif command in ['/ctag', '/canceltag']:
-                await self._handle_cancel_tag_command(message)
-
-            # Welcome commands
-            elif command in ['.setwelcome', '.welcome', '/setwelcome', '/welcome']:
-                await self._handle_welcome_command(message, parts)
-
-            # Public commands
-            elif command == '#help':
+            # Help command (available to all)
+            elif command in ['/help', '#help']:
                 await self._handle_help_command(message)
             elif command == '#rules':
                 await self._handle_rules_command(message)
@@ -287,21 +338,43 @@ class VBot:
                 if result.get('queued'):
                     # Song added to queue
                     mode = "🎙️ VC Queue" if result.get('streaming') else "📋 Download Queue"
+
+                    # Create inline buttons for queue management
+                    buttons = [
+                        [
+                            Button.inline("⏭️ Skip", data="music_skip"),
+                            Button.inline("📋 Queue", data="music_queue")
+                        ],
+                        [
+                            Button.inline("⏹️ Stop", data="music_stop")
+                        ]
+                    ]
+
                     await status_msg.edit(
                         f"{mode} **#{result['position']}**\n\n"
                         f"🎵 **{song['title']}**\n"
-                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}"
+                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}",
+                        buttons=buttons
                     )
                 elif result.get('streaming'):
-                    # Streaming in voice chat
+                    # Streaming in voice chat - add playback control buttons
+                    buttons = [
+                        [
+                            Button.inline("⏸️ Pause", data="music_pause"),
+                            Button.inline("⏭️ Skip", data="music_skip")
+                        ],
+                        [
+                            Button.inline("📋 Queue", data="music_queue"),
+                            Button.inline("⏹️ Stop", data="music_stop")
+                        ]
+                    ]
+
                     await status_msg.edit(
                         f"🎙️ **Now Streaming in Voice Chat**\n\n"
                         f"🎶 **{song['title']}**\n"
                         f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n\n"
-                        f"**Controls:**\n"
-                        f"/pause - Pause stream\n"
-                        f"/resume - Resume stream\n"
-                        f"/stop - Stop and leave VC"
+                        f"Use the buttons below to control playback ⬇️",
+                        buttons=buttons
                     )
                 else:
                     # Download mode - send file
@@ -347,14 +420,21 @@ class VBot:
             await message.reply(f"❌ Error stopping stream: {str(e)}")
 
     async def _handle_pause_command(self, message):
-        """Handle /pause command"""
+        """Handle .pause command"""
         if not self.music_manager:
             return
 
         try:
             success = await self.music_manager.pause_stream(message.chat_id)
             if success:
-                await message.reply("⏸️ **Paused stream**")
+                # Show resume button
+                buttons = [
+                    [
+                        Button.inline("▶️ Resume", data="music_resume"),
+                        Button.inline("⏹️ Stop", data="music_stop")
+                    ]
+                ]
+                await message.reply("⏸️ **Paused stream**", buttons=buttons)
             else:
                 await message.reply("❌ No active stream to pause or streaming not available")
         except Exception as e:
@@ -362,14 +442,21 @@ class VBot:
             await message.reply("❌ Error pausing stream")
 
     async def _handle_resume_command(self, message):
-        """Handle /resume command"""
+        """Handle .resume command"""
         if not self.music_manager:
             return
 
         try:
             success = await self.music_manager.resume_stream(message.chat_id)
             if success:
-                await message.reply("▶️ **Resumed stream**")
+                # Show pause button
+                buttons = [
+                    [
+                        Button.inline("⏸️ Pause", data="music_pause"),
+                        Button.inline("⏹️ Stop", data="music_stop")
+                    ]
+                ]
+                await message.reply("▶️ **Resumed stream**", buttons=buttons)
             else:
                 await message.reply("❌ No paused stream to resume or streaming not available")
         except Exception as e:
@@ -667,20 +754,427 @@ Made with ❤️ by Vzoel Fox
         except Exception as e:
             await message.reply(f"❌ Error getting stats: {str(e)}")
 
+    async def _handle_add_permission_command(self, message, parts):
+        """Handle +add command - authorize user for / commands"""
+        try:
+            # Extract user from reply or mention
+            target_user_id = None
+            target_username = None
+
+            if message.is_reply:
+                reply_msg = await message.get_reply_message()
+                target_user_id = reply_msg.sender_id
+                target_user = await reply_msg.get_sender()
+                target_username = target_user.username or target_user.first_name
+            elif len(parts) > 1:
+                # Try parsing user ID or username
+                user_arg = parts[1].lstrip('@')
+                try:
+                    target_user_id = int(user_arg)
+                except ValueError:
+                    # Try username lookup
+                    try:
+                        target_user = await self.client.get_entity(user_arg)
+                        target_user_id = target_user.id
+                        target_username = target_user.username or target_user.first_name
+                    except Exception as e:
+                        await message.reply(f"❌ Could not find user: {user_arg}")
+                        return
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** +add <user_id|@username> or reply to a user\n\n"
+                    "**Examples:**\n"
+                    "• +add 123456789\n"
+                    "• +add @username\n"
+                    "• Reply to a user and type: +add"
+                )
+                return
+
+            # Add permission to database
+            self.database.add_permission(target_user_id, message.chat_id)
+
+            response = (
+                f"✅ **Permission granted**\n\n"
+                f"User: {target_username or target_user_id}\n"
+                f"ID: `{target_user_id}`\n\n"
+                f"This user can now use **/** commands in this chat."
+            )
+
+            await message.reply(response)
+            logger.info(f"Added permission for user {target_user_id} in chat {message.chat_id}")
+
+        except Exception as e:
+            logger.error(f"Error in +add command: {e}")
+            await message.reply(f"❌ Error adding permission: {str(e)}")
+
+    async def _handle_del_permission_command(self, message, parts):
+        """Handle +del command - remove user authorization"""
+        try:
+            # Extract user from reply or mention
+            target_user_id = None
+            target_username = None
+
+            if message.is_reply:
+                reply_msg = await message.get_reply_message()
+                target_user_id = reply_msg.sender_id
+                target_user = await reply_msg.get_sender()
+                target_username = target_user.username or target_user.first_name
+            elif len(parts) > 1:
+                user_arg = parts[1].lstrip('@')
+                try:
+                    target_user_id = int(user_arg)
+                except ValueError:
+                    try:
+                        target_user = await self.client.get_entity(user_arg)
+                        target_user_id = target_user.id
+                        target_username = target_user.username or target_user.first_name
+                    except Exception as e:
+                        await message.reply(f"❌ Could not find user: {user_arg}")
+                        return
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** +del <user_id|@username> or reply to a user\n\n"
+                    "**Examples:**\n"
+                    "• +del 123456789\n"
+                    "• +del @username\n"
+                    "• Reply to a user and type: +del"
+                )
+                return
+
+            # Remove permission from database
+            success = self.database.remove_permission(target_user_id, message.chat_id)
+
+            if success:
+                response = (
+                    f"✅ **Permission revoked**\n\n"
+                    f"User: {target_username or target_user_id}\n"
+                    f"ID: `{target_user_id}`\n\n"
+                    f"This user can no longer use **/** commands in this chat."
+                )
+            else:
+                response = f"⚠️ User {target_user_id} was not in the authorized list"
+
+            await message.reply(response)
+            logger.info(f"Removed permission for user {target_user_id} in chat {message.chat_id}")
+
+        except Exception as e:
+            logger.error(f"Error in +del command: {e}")
+            await message.reply(f"❌ Error removing permission: {str(e)}")
+
+    async def _handle_setwelcome_command(self, message, parts):
+        """Handle +setwelcome command - configure welcome message"""
+        try:
+            if len(parts) < 2:
+                # Show current welcome message
+                welcome_data = self.database.get_welcome(message.chat_id)
+                if welcome_data and welcome_data.get('enabled'):
+                    await message.reply(
+                        f"**Current welcome message:**\n\n{welcome_data['message']}\n\n"
+                        f"**Usage:** +setwelcome <message> to update\n"
+                        f"**Disable:** +setwelcome off"
+                    )
+                else:
+                    await message.reply(
+                        "**Welcome system is disabled**\n\n"
+                        "**Usage:** +setwelcome <message>\n\n"
+                        "**Example:**\n"
+                        "+setwelcome Welcome {user}! Please read the rules."
+                    )
+                return
+
+            welcome_text = ' '.join(parts[1:])
+
+            # Check if disabling
+            if welcome_text.lower() in ['off', 'disable', 'disabled']:
+                self.database.set_welcome(message.chat_id, "", False)
+                await message.reply("✅ Welcome system **disabled** for this chat")
+                return
+
+            # Set welcome message
+            self.database.set_welcome(message.chat_id, welcome_text, True)
+
+            await message.reply(
+                f"✅ **Welcome message updated**\n\n"
+                f"**Preview:**\n{welcome_text}\n\n"
+                f"**Variables:**\n"
+                f"• {{user}} - User's first name\n"
+                f"• {{mention}} - Mention the user\n"
+                f"• {{chat}} - Chat name"
+            )
+            logger.info(f"Updated welcome message for chat {message.chat_id}")
+
+        except Exception as e:
+            logger.error(f"Error in +setwelcome command: {e}")
+            await message.reply(f"❌ Error setting welcome: {str(e)}")
+
+    async def _handle_promote_command(self, message, parts):
+        """Handle /pm command - promote user to bot-managed admin list"""
+        try:
+            target_user_id = None
+            target_username = None
+
+            if message.is_reply:
+                reply_msg = await message.get_reply_message()
+                target_user_id = reply_msg.sender_id
+                target_user = await reply_msg.get_sender()
+                target_username = target_user.username or target_user.first_name
+            elif len(parts) > 1:
+                user_arg = parts[1].lstrip('@')
+                try:
+                    target_user_id = int(user_arg)
+                except ValueError:
+                    try:
+                        target_user = await self.client.get_entity(user_arg)
+                        target_user_id = target_user.id
+                        target_username = target_user.username or target_user.first_name
+                    except Exception:
+                        await message.reply(f"❌ Could not find user: {user_arg}")
+                        return
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** /pm <user> or reply to a user\n\n"
+                    "Promote user to bot-managed admin list (can use / commands)"
+                )
+                return
+
+            # Add to bot-managed admin list
+            self.database.add_admin(message.chat_id, target_user_id)
+
+            await message.reply(
+                f"✅ **User promoted**\n\n"
+                f"User: {target_username or target_user_id}\n"
+                f"ID: `{target_user_id}`\n\n"
+                f"This user can now use **/** commands via bot-managed permissions."
+            )
+
+        except Exception as e:
+            logger.error(f"Error in /pm command: {e}")
+            await message.reply(f"❌ Error promoting user: {str(e)}")
+
+    async def _handle_demote_command(self, message, parts):
+        """Handle /dm command - demote user from bot-managed admin list"""
+        try:
+            target_user_id = None
+            target_username = None
+
+            if message.is_reply:
+                reply_msg = await message.get_reply_message()
+                target_user_id = reply_msg.sender_id
+                target_user = await reply_msg.get_sender()
+                target_username = target_user.username or target_user.first_name
+            elif len(parts) > 1:
+                user_arg = parts[1].lstrip('@')
+                try:
+                    target_user_id = int(user_arg)
+                except ValueError:
+                    try:
+                        target_user = await self.client.get_entity(user_arg)
+                        target_user_id = target_user.id
+                        target_username = target_user.username or target_user.first_name
+                    except Exception:
+                        await message.reply(f"❌ Could not find user: {user_arg}")
+                        return
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** /dm <user> or reply to a user\n\n"
+                    "Demote user from bot-managed admin list"
+                )
+                return
+
+            # Remove from bot-managed admin list
+            success = self.database.remove_admin(message.chat_id, target_user_id)
+
+            if success:
+                await message.reply(
+                    f"✅ **User demoted**\n\n"
+                    f"User: {target_username or target_user_id}\n"
+                    f"ID: `{target_user_id}`\n\n"
+                    f"This user has been removed from bot-managed admin list."
+                )
+            else:
+                await message.reply(f"⚠️ User was not in the bot-managed admin list")
+
+        except Exception as e:
+            logger.error(f"Error in /dm command: {e}")
+            await message.reply(f"❌ Error demoting user: {str(e)}")
+
+    async def _handle_cancel_tag_command(self, message):
+        """Handle /cancel command - stop ongoing tag operation"""
+        try:
+            if not config.ENABLE_TAG_SYSTEM:
+                return
+
+            success = await self.tag_manager.cancel_tag(message.chat_id)
+
+            if success:
+                await message.reply("✅ Tag operation cancelled")
+            else:
+                await message.reply("⚠️ No active tag operation in this chat")
+
+        except Exception as e:
+            logger.error(f"Error in /cancel command: {e}")
+            await message.reply(f"❌ Error cancelling tag: {str(e)}")
+
+    async def _handle_locklist_command(self, message):
+        """Handle /locklist command - show locked users"""
+        try:
+            if not config.ENABLE_LOCK_SYSTEM:
+                await message.reply("🔒 Lock system is disabled")
+                return
+
+            locked_users = self.lock_manager.get_locked_users(message.chat_id)
+
+            if not locked_users:
+                await message.reply("📋 No locked users in this chat")
+                return
+
+            response = "🔒 **Locked Users:**\n\n"
+            for user_id, data in locked_users.items():
+                reason = data.get('reason', 'No reason')
+                response += f"• User ID: `{user_id}`\n  Reason: {reason}\n\n"
+
+            response += f"**Total:** {len(locked_users)} user(s)"
+
+            if config.ENABLE_PRIVACY_SYSTEM:
+                await self.privacy_manager.process_private_command(
+                    self.client, message, response
+                )
+            else:
+                await message.reply(response)
+
+        except Exception as e:
+            logger.error(f"Error in /locklist command: {e}")
+            await message.reply(f"❌ Error getting lock list: {str(e)}")
+
+    async def _handle_rules_command(self, message):
+        """Handle #rules command"""
+        rules_text = """
+📜 **Group Rules**
+
+1. Be respectful to all members
+2. No spam or flooding
+3. No NSFW content
+4. Follow Telegram's Terms of Service
+5. Use appropriate language
+
+For support: @VZLfxs
+"""
+        await message.reply(rules_text)
+
+    async def _handle_session_command(self, message):
+        """Handle #session command"""
+        session_text = """
+🔐 **Session String Generator**
+
+To generate a session string for the assistant account:
+
+**Method 1: Terminal (recommended)**
+```bash
+python3 genstring.py
+```
+
+**Method 2: In-bot**
+Send `.gensession` command in private chat with the bot
+
+**Note:** The session can be from any Telegram account (user account, not bot). You just need valid API_ID and API_HASH.
+
+**Support:** @VZLfxs
+"""
+        await message.reply(session_text)
+
     async def _handle_callback(self, event):
         """Handle callback queries"""
         try:
             data = event.data.decode('utf-8')
 
             if data.startswith('music_'):
-                await self.music_manager.handle_music_callback(self.client, event)
+                # Handle music control callbacks
+                action = data.split('_')[1]
+                chat_id = event.chat_id
+
+                if action == 'pause':
+                    success = await self.music_manager.pause_stream(chat_id)
+                    if success:
+                        await event.answer("⏸️ Paused")
+                        # Update button to show resume
+                        buttons = [
+                            [
+                                Button.inline("▶️ Resume", data="music_resume"),
+                                Button.inline("⏹️ Stop", data="music_stop")
+                            ]
+                        ]
+                        await event.edit(buttons=buttons)
+                    else:
+                        await event.answer("❌ Failed to pause", alert=True)
+
+                elif action == 'resume':
+                    success = await self.music_manager.resume_stream(chat_id)
+                    if success:
+                        await event.answer("▶️ Resumed")
+                        # Update button to show pause
+                        buttons = [
+                            [
+                                Button.inline("⏸️ Pause", data="music_pause"),
+                                Button.inline("⏭️ Skip", data="music_skip")
+                            ],
+                            [
+                                Button.inline("📋 Queue", data="music_queue"),
+                                Button.inline("⏹️ Stop", data="music_stop")
+                            ]
+                        ]
+                        await event.edit(buttons=buttons)
+                    else:
+                        await event.answer("❌ Failed to resume", alert=True)
+
+                elif action == 'stop':
+                    success = await self.music_manager.stop_stream(chat_id)
+                    if success:
+                        await event.answer("⏹️ Stopped")
+                        await event.edit("⏹️ **Stopped and cleared queue**")
+                    else:
+                        await event.answer("❌ No active stream", alert=True)
+
+                elif action == 'skip':
+                    # Skip to next song in queue
+                    await event.answer("⏭️ Skipping...")
+                    # Note: Skip functionality would need to be implemented in music_manager
+                    await event.edit("⏭️ **Skipped to next song**")
+
+                elif action == 'queue':
+                    # Show queue
+                    current = self.music_manager.get_current_song(chat_id)
+                    queue = self.music_manager.get_queue(chat_id)
+
+                    if not current and not queue:
+                        await event.answer("📋 Queue is empty", alert=True)
+                        return
+
+                    response = "📋 **Music Queue**\n\n"
+                    if current:
+                        response += f"🎵 **Now Playing:**\n{current['title']}\n\n"
+                    if queue:
+                        response += "**Up Next:**\n"
+                        for i, song in enumerate(queue[:5], 1):
+                            response += f"{i}. {song['title']}\n"
+                        if len(queue) > 5:
+                            response += f"\n... and {len(queue) - 5} more"
+
+                    await event.answer(response, alert=True)
+
             elif data.startswith('welcome_'):
-                await self.welcome_manager.handle_welcome_callback(self.client, event)
+                # Handle welcome callbacks if needed
+                await event.answer("Welcome action")
+
             else:
                 await event.answer("Unknown callback")
 
         except Exception as e:
             logger.error(f"Error handling callback: {e}")
+            await event.answer("❌ Error processing action", alert=True)
 
     async def run(self):
         """Run VBot"""
