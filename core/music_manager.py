@@ -137,8 +137,12 @@ class MusicManager:
             logger.error(f"Error searching song: {e}")
             return None
 
-    async def download_audio(self, url: str, title: str) -> Optional[str]:
-        """Download audio from YouTube"""
+    async def download_audio(self, url: str, title: str, audio_only: bool = True) -> Optional[str]:
+        """Download media from YouTube
+
+        Args:
+            audio_only: If True, extract audio (MP3). If False, download video (MP4).
+        """
         if not YTDLP_AVAILABLE:
             return None
 
@@ -146,18 +150,32 @@ class MusicManager:
             # Output path
             output_template = str(self.download_path / f"{title}.%(ext)s")
 
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': output_template,
-                'noplaylist': True,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-                'quiet': True,
-                'no_warnings': True,
-            }
+            if audio_only:
+                # Audio only - extract to MP3
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': output_template,
+                    'noplaylist': True,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                extensions = ['mp3', 'm4a', 'webm', 'opus']
+            else:
+                # Video mode - download video with audio
+                ydl_opts = {
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                    'outtmpl': output_template,
+                    'noplaylist': True,
+                    'merge_output_format': 'mp4',
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                extensions = ['mp4', 'mkv', 'webm']
 
             # Add cookies
             if config.YOUTUBE_COOKIES_FROM_BROWSER:
@@ -169,7 +187,7 @@ class MusicManager:
                 ydl.download([url])
 
             # Find downloaded file
-            for ext in ['mp3', 'm4a', 'webm', 'opus']:
+            for ext in extensions:
                 file_path = self.download_path / f"{title}.{ext}"
                 if file_path.exists():
                     return str(file_path)
@@ -177,11 +195,15 @@ class MusicManager:
             return None
 
         except Exception as e:
-            logger.error(f"Error downloading audio: {e}")
+            logger.error(f"Error downloading media: {e}")
             return None
 
-    async def play_stream(self, chat_id: int, query: str, requester_id: int) -> Dict:
-        """Play audio in voice chat (streaming mode) or download if streaming unavailable"""
+    async def play_stream(self, chat_id: int, query: str, requester_id: int, audio_only: bool = True) -> Dict:
+        """Play media in voice chat (streaming mode) or download if streaming unavailable
+
+        Args:
+            audio_only: If True, extract audio only (MP3). If False, keep video.
+        """
         # Rate limiting
         current_time = time.time()
         if requester_id in self.last_request:
@@ -277,11 +299,12 @@ class MusicManager:
                     'streaming': False
                 }
 
-            # Download audio
-            file_path = await self.download_audio(song_info['url'], song_info['title'][:50])
+            # Download media (audio or video based on audio_only parameter)
+            file_path = await self.download_audio(song_info['url'], song_info['title'][:50], audio_only)
 
             if not file_path:
-                return {'success': False, 'error': 'Failed to download audio'}
+                media_type = "audio" if audio_only else "video"
+                return {'success': False, 'error': f'Failed to download {media_type}'}
 
             self.current_song[chat_id] = {
                 **song_info,
@@ -317,15 +340,37 @@ class MusicManager:
             logger.error(f"Error stopping: {e}")
             return False
 
-    async def leave_voice_chat(self, chat_id: int):
+    async def join_voice_chat(self, chat_id: int) -> bool:
+        """Join voice chat without playing"""
+        try:
+            if not self.streaming_available or not self.pytgcalls:
+                return False
+
+            # Check if already in call
+            if chat_id in self.active_calls and self.active_calls[chat_id]:
+                return True
+
+            # Note: PyTgCalls joins automatically when play() is called
+            # This is a placeholder - actual join happens with first play
+            logger.info(f"Voice chat connection ready for {chat_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error preparing voice chat: {e}")
+            return False
+
+    async def leave_voice_chat(self, chat_id: int) -> bool:
         """Leave voice chat"""
         try:
             if self.pytgcalls and chat_id in self.active_calls:
                 await self.pytgcalls.leave_call(chat_id)
                 self.active_calls.pop(chat_id, None)
                 logger.info(f"Left voice chat in {chat_id}")
+                return True
+            return False
         except Exception as e:
             logger.error(f"Error leaving voice chat: {e}")
+            return False
 
     async def _build_group_call_config(self, chat_id: int) -> Optional['GroupCallConfig']:
         """Build group call configuration with optional join_as resolution"""

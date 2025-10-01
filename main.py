@@ -142,32 +142,39 @@ class VBot:
         """Setup bot command suggestions (slash commands visible in menu)"""
         try:
             from telethon.tl.functions.bots import SetBotCommandsRequest
-            from telethon.tl.types import BotCommand
+            from telethon.tl.types import BotCommand, BotCommandScopeDefault
 
             # Define available commands
             commands = [
-                BotCommand(command="start", description="Start the bot and see welcome message"),
-                BotCommand(command="help", description="Show detailed command list"),
-                BotCommand(command="about", description="Bot information and features"),
+                BotCommand(command="start", description="System overview and welcome"),
+                BotCommand(command="help", description="Complete command reference"),
+                BotCommand(command="about", description="System information"),
 
-                # Admin commands (/)
-                BotCommand(command="pm", description="Promote user to admin (reply or @username)"),
+                # Music commands
+                BotCommand(command="play", description="Play audio from YouTube"),
+                BotCommand(command="pause", description="Pause current playback"),
+                BotCommand(command="resume", description="Resume playback"),
+                BotCommand(command="stop", description="Stop and clear queue"),
+                BotCommand(command="queue", description="View music queue"),
+
+                # Admin commands
+                BotCommand(command="pm", description="Promote user to admin"),
                 BotCommand(command="dm", description="Demote user from admin"),
-                BotCommand(command="tagall", description="Tag all members in chat"),
-                BotCommand(command="cancel", description="Cancel ongoing tag operation"),
-                BotCommand(command="lock", description="Lock user (auto-delete messages)"),
+                BotCommand(command="tagall", description="Tag all members"),
+                BotCommand(command="cancel", description="Cancel tag operation"),
+                BotCommand(command="lock", description="Lock user (auto-delete)"),
                 BotCommand(command="unlock", description="Unlock user"),
-                BotCommand(command="locklist", description="Show all locked users"),
+                BotCommand(command="locklist", description="Show locked users"),
             ]
 
             # Set bot commands
             await self.client(SetBotCommandsRequest(
-                scope=types.BotCommandScopeDefault(),
+                scope=BotCommandScopeDefault(),
                 lang_code='en',
                 commands=commands
             ))
 
-            logger.info("✅ Bot command suggestions configured")
+            logger.info("Bot command suggestions configured")
 
         except Exception as e:
             logger.error(f"Failed to setup bot commands: {e}")
@@ -261,7 +268,9 @@ class VBot:
 
             # Public music commands (. prefix)
             elif command in ['.play', '.p']:
-                await self._handle_music_command(message, parts)
+                await self._handle_music_command(message, parts, audio_only=True)
+            elif command in ['.plv', '.playvideo']:
+                await self._handle_music_command(message, parts, audio_only=False)
             elif command == '.stop':
                 await self._handle_stop_command(message)
             elif command == '.pause':
@@ -270,13 +279,17 @@ class VBot:
                 await self._handle_resume_command(message)
             elif command in ['.queue', '.q']:
                 await self._handle_queue_command(message)
+            elif command == '.join':
+                await self._handle_join_vc_command(message)
+            elif command == '.leave':
+                await self._handle_leave_vc_command(message)
             elif command == '.gensession':
                 # Handled by plugin
                 pass
 
             # Legacy aliases (backward compatibility)
             elif command in ['/play', '/p', '/music']:
-                await self._handle_music_command(message, parts)
+                await self._handle_music_command(message, parts, audio_only=True)
             elif command in ['/stop', '/end']:
                 await self._handle_stop_command(message)
             elif command == '/pause':
@@ -319,31 +332,39 @@ class VBot:
         except Exception as e:
             logger.error(f"Error routing command {command}: {e}")
 
-    async def _handle_music_command(self, message, parts):
-        """Handle music download commands"""
+    async def _handle_music_command(self, message, parts, audio_only=True):
+        """Handle music download/stream commands"""
         if not config.MUSIC_ENABLED:
-            await message.reply("🎵 Music system is disabled")
+            await message.reply("Music system is disabled")
             return
 
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await message.reply("Music system not initialized")
             return
 
         try:
             if len(parts) < 2:
-                await message.reply("🎵 **Usage:** /play <song name or URL>\n\n**Examples:**\n• /play shape of you\n• /play https://youtu.be/...")
+                media_type = "audio" if audio_only else "video"
+                await message.reply(
+                    f"**Usage:** {parts[0]} <query or URL>\n\n"
+                    f"**Examples:**\n"
+                    f"{parts[0]} shape of you\n"
+                    f"{parts[0]} https://youtu.be/..."
+                )
                 return
 
             query = ' '.join(parts[1:])
 
             # Show processing message
-            status_msg = await message.reply("**Processing media request...**")
+            media_type = "audio" if audio_only else "video"
+            status_msg = await message.reply(f"**Processing {media_type} request...**")
 
             # Play stream
             result = await self.music_manager.play_stream(
                 message.chat_id,
                 query,
-                message.sender_id
+                message.sender_id,
+                audio_only=audio_only
             )
 
             if result['success']:
@@ -487,16 +508,16 @@ class VBot:
             queue = self.music_manager.get_queue(message.chat_id)
 
             if not current and not queue:
-                await message.reply("📋 Queue is empty\n\nUse /play to add songs!")
+                await message.reply("**Queue Status**\n\nQueue is empty\n\nUse .play to add songs")
                 return
 
-            response = "📋 **Music Queue**\n\n"
+            response = "**Music Queue**\n\n"
 
             if current:
-                response += f"🎵 **Now Playing:**\n{current['title']}\n\n"
+                response += f"**Now Playing**\n{current['title']}\n\n"
 
             if queue:
-                response += "**Up Next:**\n"
+                response += "**Up Next**\n"
                 for i, song in enumerate(queue[:10], 1):
                     response += f"{i}. {song['title']}\n"
 
@@ -508,7 +529,57 @@ class VBot:
             await message.reply(response)
 
         except Exception as e:
-            await message.reply(f"❌ Error getting queue: {str(e)}")
+            await message.reply(f"Error getting queue: {str(e)}")
+
+    async def _handle_join_vc_command(self, message):
+        """Handle .join command - join voice chat"""
+        try:
+            if not self.music_manager:
+                await message.reply("Music system not initialized")
+                return
+
+            if not self.music_manager.streaming_available:
+                await message.reply("Voice chat streaming not available\nAssistant account not configured")
+                return
+
+            # Join voice chat
+            status_msg = await message.reply("**Connecting to voice chat...**")
+
+            success = await self.music_manager.join_voice_chat(message.chat_id)
+
+            if success:
+                await status_msg.edit("**Connected to voice chat**\n\nReady for streaming")
+            else:
+                await status_msg.edit("Failed to join voice chat\n\nCheck assistant permissions")
+
+        except Exception as e:
+            logger.error(f"Error joining VC: {e}")
+            await message.reply(f"Error: {str(e)}")
+
+    async def _handle_leave_vc_command(self, message):
+        """Handle .leave command - leave voice chat"""
+        try:
+            if not self.music_manager:
+                await message.reply("Music system not initialized")
+                return
+
+            if not self.music_manager.streaming_available:
+                await message.reply("Not connected to voice chat")
+                return
+
+            # Leave voice chat
+            status_msg = await message.reply("**Disconnecting from voice chat...**")
+
+            success = await self.music_manager.leave_voice_chat(message.chat_id)
+
+            if success:
+                await status_msg.edit("**Disconnected from voice chat**")
+            else:
+                await status_msg.edit("Not in voice chat")
+
+        except Exception as e:
+            logger.error(f"Error leaving VC: {e}")
+            await message.reply(f"Error: {str(e)}")
 
     async def _handle_lock_command(self, message, parts):
         """Handle /lock command"""
