@@ -31,6 +31,7 @@ import config
 
 # Import Telethon
 from telethon import TelegramClient, events, Button, types
+from telethon.sessions import StringSession
 from telethon.tl.types import MessageEntityMentionName
 
 # Import VBot modules
@@ -42,6 +43,7 @@ class VBot:
 
     def __init__(self):
         self.client = None
+        self.assistant_client = None  # Assistant for voice chat streaming
         self.music_manager = None  # Will be initialized after client
 
         # Initialize managers (they will import config directly)
@@ -74,9 +76,29 @@ class VBot:
             logger.info(f"🎵 VBot started successfully!")
             logger.info(f"Bot: {me.first_name} (@{me.username})")
 
-            # Initialize Music Manager with client (for PyTgCalls)
+            # Initialize Assistant Client (for voice chat streaming)
+            if config.STRING_SESSION and config.STRING_SESSION.strip():
+                try:
+                    logger.info("🔄 Initializing assistant client for voice chat streaming...")
+                    self.assistant_client = TelegramClient(
+                        StringSession(config.STRING_SESSION),
+                        config.API_ID,
+                        config.API_HASH
+                    )
+                    await self.assistant_client.start()
+
+                    assistant_me = await self.assistant_client.get_me()
+                    logger.info(f"✅ Assistant: {assistant_me.first_name} (@{assistant_me.username or 'no_username'})")
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize assistant client: {e}")
+                    logger.warning("⚠️ Voice chat streaming will be disabled (download mode only)")
+                    self.assistant_client = None
+            else:
+                logger.info("ℹ️ No STRING_SESSION configured - using download mode only")
+
+            # Initialize Music Manager with clients
             from core.music_manager import MusicManager
-            self.music_manager = MusicManager(self.client)
+            self.music_manager = MusicManager(self.client, self.assistant_client)
             await self.music_manager.start()
             # Log message handled by music_manager.start()
 
@@ -674,6 +696,13 @@ Made with ❤️ by Vzoel Fox
 
         if self.tag_manager:
             await self.tag_manager.force_stop_all_tags()
+
+        if self.music_manager:
+            await self.music_manager.stop()
+
+        if self.assistant_client:
+            await self.assistant_client.disconnect()
+            logger.info("✅ Assistant client disconnected")
 
         if self.client:
             await self.client.disconnect()

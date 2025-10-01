@@ -38,14 +38,15 @@ except ImportError:
 class MusicManager:
     """Music manager with voice chat streaming support"""
 
-    def __init__(self, client):
-        self.client = client
+    def __init__(self, bot_client, assistant_client=None):
+        self.bot_client = bot_client  # For sending messages
+        self.assistant_client = assistant_client  # For voice chat streaming
         self.download_path = Path(config.DOWNLOAD_PATH)
         self.download_path.mkdir(exist_ok=True)
 
         # PyTgCalls instance
         self.pytgcalls = None
-        self.streaming_available = PYTGCALLS_AVAILABLE
+        self.streaming_available = PYTGCALLS_AVAILABLE and assistant_client is not None
 
         # Queue per chat
         self.queues: Dict[int, List[Dict]] = {}
@@ -66,7 +67,7 @@ class MusicManager:
         # Initialize PyTgCalls if available
         if self.streaming_available:
             try:
-                self.pytgcalls = PyTgCalls(client)
+                self.pytgcalls = PyTgCalls(self.assistant_client)
                 logger.info("PyTgCalls initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize PyTgCalls: {e}")
@@ -358,9 +359,9 @@ class MusicManager:
 
         try:
             if isinstance(join_as, str) and join_as.lower() in {'me', 'self'}:
-                entity = await self.client.get_me()
+                entity = await self.assistant_client.get_me()
             else:
-                entity = await self.client.get_entity(join_as)
+                entity = await self.assistant_client.get_entity(join_as)
             self._join_as_cache = entity
         except Exception as exc:
             logger.warning(f"Failed to resolve VOICE_CHAT_JOIN_AS='{join_as}': {exc}")
