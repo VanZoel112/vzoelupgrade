@@ -35,7 +35,7 @@ from telethon.sessions import StringSession
 from telethon.tl.types import MessageEntityMentionName
 
 # Import VBot modules
-from core import AuthManager, EmojiManager, MusicManager
+from core import AuthManager, EmojiManager, MusicManager, Database
 from modules import LockManager, TagManager, WelcomeManager, GitHubSync, PrivacyManager
 
 class VBot:
@@ -46,8 +46,11 @@ class VBot:
         self.assistant_client = None  # Assistant for voice chat streaming
         self.music_manager = None  # Will be initialized after client
 
+        # Initialize database (core persistence layer)
+        self.database = Database()
+
         # Initialize managers (they will import config directly)
-        self.auth_manager = AuthManager()
+        self.auth_manager = AuthManager(self.database)
         self.emoji_manager = EmojiManager()
         self.lock_manager = LockManager()
         self.tag_manager = TagManager()

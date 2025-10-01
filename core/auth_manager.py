@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
 Authentication and Authorization Manager
-Handles / commands for admins and . commands for developers
+3-Level Permission System:
+- + prefix: Owner/Developer only (management commands)
+- / prefix: Admin + Authorized users (group commands)
+- . prefix: All users (public commands)
 
 Author: VanZoel112
-Version: 2.0.0 Python
+Version: 2.1.0 Python
 """
 
 import asyncio
@@ -18,7 +21,8 @@ logger = logging.getLogger(__name__)
 class AuthManager:
     """Manages authentication and authorization for VBot"""
 
-    def __init__(self):
+    def __init__(self, database=None):
+        self.database = database  # Database instance for permission checks
         self.admin_cache: Dict[int, Set[int]] = {}  # chat_id -> set of admin user_ids
         self.cache_expiry = 300  # 5 minutes
         self.last_cache_update: Dict[int, float] = {}
@@ -74,31 +78,39 @@ class AuthManager:
             logger.error(f"Failed to refresh admin cache for chat {chat_id}: {e}")
             self.admin_cache[chat_id] = set()
 
+    async def can_use_owner_command(self, user_id: int) -> bool:
+        """Check if user can use owner commands (+ prefix)"""
+        # Only owner and developers
+        return await self.is_developer(user_id)
+
     async def can_use_admin_command(self, client, user_id: int, chat_id: int) -> bool:
         """Check if user can use admin commands (/ prefix)"""
-        # Developers can always use admin commands
+        # Owner/Developers can always use admin commands
         if await self.is_developer(user_id):
             return True
 
         # Check if user is admin in the chat
-        return await self.is_admin_in_chat(client, user_id, chat_id)
+        if await self.is_admin_in_chat(client, user_id, chat_id):
+            return True
 
-    async def can_use_dev_command(self, user_id: int) -> bool:
-        """Check if user can use developer commands (. prefix)"""
-        return await self.is_developer(user_id)
+        # Check if user has explicit permission (from database)
+        if self.database:
+            return self.database.has_permission(user_id, chat_id)
+
+        return False
 
     async def can_use_public_command(self, user_id: int) -> bool:
-        """Check if user can use public commands (# prefix)"""
-        # Public commands can be used by anyone
+        """Check if user can use public commands (. prefix)"""
+        # All users can use public commands
         return True
 
     def get_command_type(self, message_text: str) -> Optional[str]:
         """Determine command type based on prefix"""
-        if message_text.startswith(config.PREFIX_DEV):
-            return "developer"
-        elif message_text.startswith(config.PREFIX_ADMIN):
+        if message_text.startswith('+'):
+            return "owner"
+        elif message_text.startswith('/'):
             return "admin"
-        elif message_text.startswith(config.PREFIX_PUBLIC):
+        elif message_text.startswith('.'):
             return "public"
         return None
 
@@ -106,8 +118,8 @@ class AuthManager:
         """Main permission checker for commands"""
         command_type = self.get_command_type(command_text)
 
-        if command_type == "developer":
-            return await self.can_use_dev_command(user_id)
+        if command_type == "owner":
+            return await self.can_use_owner_command(user_id)
         elif command_type == "admin":
             return await self.can_use_admin_command(client, user_id, chat_id)
         elif command_type == "public":
@@ -122,12 +134,14 @@ class AuthManager:
 
     def get_permission_error_message(self, command_type: str) -> str:
         """Get appropriate error message for permission denial"""
-        if command_type == "developer":
-            return "⚠️ Developer command access denied. Only bot developers can use . commands."
+        if command_type == "owner":
+            return "⚠️ Owner command access denied. Only bot owner/developers can use + commands."
         elif command_type == "admin":
-            return "⚠️ Admin command access denied. Only group admins can use / commands."
-        else:
+            return "⚠️ Admin command access denied. Only admins and authorized users can use / commands."
+        elif command_type == "public":
             return "⚠️ Command access denied."
+        else:
+            return "⚠️ Unknown command type."
 
     async def clear_admin_cache(self, chat_id: Optional[int] = None):
         """Clear admin cache for specific chat or all chats"""
@@ -150,8 +164,8 @@ def require_permission(permission_type: str):
             command_text = message.text
 
             has_permission = False
-            if permission_type == "developer":
-                has_permission = await auth_manager.can_use_dev_command(user_id)
+            if permission_type == "owner":
+                has_permission = await auth_manager.can_use_owner_command(user_id)
             elif permission_type == "admin":
                 has_permission = await auth_manager.can_use_admin_command(client, user_id, chat_id)
             elif permission_type == "public":
