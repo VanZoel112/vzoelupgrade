@@ -1,0 +1,43 @@
+Collecting aiohttp
+  Using cached aiohttp-3.12.15.tar.gz (7.8 MB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting aiohappyeyeballs>=2.5.0 (from aiohttp)
+  Using cached aiohappyeyeballs-2.6.1-py3-none-any.whl.metadata (5.9 kB)
+Collecting aiosignal>=1.4.0 (from aiohttp)
+  Using cached aiosignal-1.4.0-py3-none-any.whl.metadata (3.7 kB)
+Collecting attrs>=17.3.0 (from aiohttp)
+  Using cached attrs-25.3.0-py3-none-any.whl.metadata (10 kB)
+Collecting frozenlist>=1.1.1 (from aiohttp)
+  Using cached frozenlist-1.7.0-py3-none-any.whl.metadata (18 kB)
+Collecting multidict<7.0,>=4.5 (from aiohttp)
+  Using cached multidict-6.6.4-py3-none-any.whl.metadata (5.3 kB)
+Collecting propcache>=0.2.0 (from aiohttp)
+  Using cached propcache-0.3.2-py3-none-any.whl.metadata (12 kB)
+Collecting yarl<2.0,>=1.17.0 (from aiohttp)
+  Using cached yarl-1.20.1-py3-none-any.whl.metadata (73 kB)
+Requirement already satisfied: idna>=2.0 in /data/data/com.termux/files/usr/lib/python3.12/site-packages (from yarl<2.0,>=1.17.0->aiohttp) (3.10)
+Requirement already satisfied: typing-extensions>=4.2 in /data/data/com.termux/files/usr/lib/python3.12/site-packages (from aiosignal>=1.4.0->aiohttp) (4.14.1)
+Using cached multidict-6.6.4-py3-none-any.whl (12 kB)
+Using cached yarl-1.20.1-py3-none-any.whl (46 kB)
+Using cached aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+Using cached aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+Using cached attrs-25.3.0-py3-none-any.whl (63 kB)
+Using cached frozenlist-1.7.0-py3-none-any.whl (13 kB)
+Using cached propcache-0.3.2-py3-none-any.whl (12 kB)
+Building wheels for collected packages: aiohttp
+  Building wheel for aiohttp (pyproject.toml): started
+  Building wheel for aiohttp (pyproject.toml): still running...
+  Building wheel for aiohttp (pyproject.toml): still running...
+  Building wheel for aiohttp (pyproject.toml): still running...
+  Building wheel for aiohttp (pyproject.toml): finished with status 'done'
+  Created wheel for aiohttp: filename=aiohttp-3.12.15-cp312-cp312-linux_aarch64.whl size=1151915 sha256=4b41f1996d16745a1f9f5ed35abe9dbee3ea0b8ff0ff4dc4a4e629ff3310b618
+  Stored in directory: /data/data/com.termux/files/home/.cache/pip/wheels/a2/e1/e1/fde53ac7d033574427846d425e946d1ea00563f07e21107c7c
+Successfully built aiohttp
+Installing collected packages: propcache, multidict, frozenlist, attrs, aiohappyeyeballs, yarl, aiosignal, aiohttp
+
+Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.12.15 aiosignal-1.4.0 attrs-25.3.0 frozenlist-1.7.0 multidict-6.6.4 propcache-0.3.2 yarl-1.20.1
