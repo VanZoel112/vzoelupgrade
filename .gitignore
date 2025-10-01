@@ -33,6 +33,8 @@ ENV/
 # Telegram session files
 *.session
 *.session-journal
+string_session.txt
+assistant_session.session
 
 # YouTube cookies (contains sensitive authentication data)
 youtube_cookies.txt
