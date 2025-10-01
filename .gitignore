@@ -36,6 +36,9 @@ ENV/
 string_session.txt
 assistant_session.session
 
+# Local configuration (contains sensitive credentials)
+config_local.py
+
 # YouTube cookies (contains sensitive authentication data)
 youtube_cookies.txt
 *cookies.txt

@@ -53,7 +53,7 @@ YOUTUBE_COOKIES_FILE = "youtube_cookies.txt"  # Netscape format cookies file
 # Assistant Account (for voice chat streaming)
 # Generate using: .gensession command in bot PM or run genstring.py
 # Leave empty ("") to disable streaming mode (download mode only)
-STRING_SESSION = ""  # Telethon session string
+STRING_SESSION = ""  # Telethon session string - ISI MANUAL, JANGAN COMMIT!
 
 # Voice chat behaviour
 VOICE_CHAT_AUTO_START = True  # Automatically start VC if none active
@@ -141,3 +141,14 @@ def validate_config():
 
     print("✅ Configuration validated successfully!")
     return True
+
+# ==============================================
+# LOCAL CONFIGURATION OVERRIDE
+# ==============================================
+
+# Import local configuration if exists (gitignored, for sensitive data)
+try:
+    from config_local import *
+    print("✅ Loaded config_local.py (local overrides)")
+except ImportError:
+    pass  # config_local.py not found, use defaults
