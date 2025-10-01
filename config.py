@@ -50,6 +50,11 @@ YOUTUBE_COOKIES_FROM_BROWSER = ""  # chrome, firefox, edge, etc
 # Option 2: Use cookies file (recommended for server)
 YOUTUBE_COOKIES_FILE = "youtube_cookies.txt"  # Netscape format cookies file
 
+# Voice chat behaviour
+VOICE_CHAT_AUTO_START = True  # Automatically start VC if none active
+# Join as specific account/channel (username, id, or "me"). Leave None to use default.
+VOICE_CHAT_JOIN_AS = None
+
 # ==============================================
 # FEATURE TOGGLES
 # ==============================================
