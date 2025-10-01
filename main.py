@@ -49,12 +49,12 @@ class VBot:
         # Initialize database (core persistence layer)
         self.database = Database()
 
-        # Initialize managers (they will import config directly)
+        # Initialize managers with database
         self.auth_manager = AuthManager(self.database)
         self.emoji_manager = EmojiManager()
-        self.lock_manager = LockManager()
+        self.lock_manager = LockManager(self.database)
         self.tag_manager = TagManager()
-        self.welcome_manager = WelcomeManager()
+        self.welcome_manager = WelcomeManager(self.database)
         self.github_sync = GitHubSync()
         self.privacy_manager = PrivacyManager()
 
@@ -250,6 +250,8 @@ class VBot:
                 await self._handle_del_permission_command(message, parts)
             elif command == '+setwelcome':
                 await self._handle_setwelcome_command(message, parts)
+            elif command == '+backup':
+                await self._handle_backup_command(message, parts)
 
             # Admin commands for user management (/ prefix)
             elif command == '/pm':
@@ -1085,6 +1087,45 @@ Send `.gensession` command in private chat with the bot
 **Support:** @VZLfxs
 """
         await message.reply(session_text)
+
+    async def _handle_backup_command(self, message, parts):
+        """Handle +backup command - manual database backup to GitHub"""
+        try:
+            status_msg = await message.reply("📦 **Creating backup...**")
+
+            # Get custom commit message if provided
+            commit_message = None
+            if len(parts) > 1:
+                commit_message = ' '.join(parts[1:])
+
+            # Perform manual backup
+            success = await self.database.manual_backup(commit_message)
+
+            if success:
+                # Get backup stats
+                stats = self.database.get_backup_stats()
+                last_backup = stats.get('last_backup', 'Never')
+
+                await status_msg.edit(
+                    f"✅ **Database Backup Complete**\n\n"
+                    f"📁 Database backed up to GitHub\n"
+                    f"⏰ Last backup: {last_backup}\n"
+                    f"📊 Database size: {self.database.db_path.stat().st_size / 1024:.2f} KB\n\n"
+                    f"**Auto-backup:** {'Enabled' if stats.get('auto_backup_enabled') else 'Disabled'}"
+                )
+            else:
+                await status_msg.edit(
+                    "❌ **Backup Failed**\n\n"
+                    "Please check:\n"
+                    "• Git is configured\n"
+                    "• Remote repository is set\n"
+                    "• You have push access\n\n"
+                    "Check logs for details."
+                )
+
+        except Exception as e:
+            logger.error(f"Error in +backup command: {e}")
+            await message.reply(f"❌ Backup error: {str(e)}")
 
     async def _handle_callback(self, event):
         """Handle callback queries"""

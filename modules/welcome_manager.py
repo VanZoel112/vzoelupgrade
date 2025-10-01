@@ -4,81 +4,32 @@ Welcome System Manager
 Auto welcome untuk member baru dengan toggle per grup
 
 Author: VanZoel112
-Version: 2.0.0 Python
+Version: 2.0.0 Python (Database-backed)
 """
 
 import asyncio
 import logging
-import json
-import aiofiles
 from typing import Dict, Optional, List
-from pathlib import Path
 from telethon import Button
 import config
 
 logger = logging.getLogger(__name__)
 
 class WelcomeManager:
-    """Manages welcome messages for new members"""
+    """Manages welcome messages for new members (Database-backed)"""
 
-    def __init__(self):
-        
-        self.data_path = Path("data/welcome_settings.json")
-        self.welcome_settings: Dict[int, Dict] = {}  # chat_id -> settings
-
-        # Load existing settings
-        asyncio.create_task(self.load_welcome_settings())
-
-    async def load_welcome_settings(self):
-        """Load welcome settings from file"""
-        try:
-            if self.data_path.exists():
-                async with aiofiles.open(self.data_path, 'r') as f:
-                    data = json.loads(await f.read())
-
-                # Convert string keys back to integers
-                for chat_id_str, settings in data.get('welcome_settings', {}).items():
-                    self.welcome_settings[int(chat_id_str)] = settings
-
-                logger.info(f"Loaded welcome settings for {len(self.welcome_settings)} chats")
-
-        except Exception as e:
-            logger.error(f"Error loading welcome settings: {e}")
-            self.welcome_settings = {}
-
-    async def save_welcome_settings(self):
-        """Save welcome settings to file"""
-        try:
-            self.data_path.parent.mkdir(exist_ok=True)
-
-            data = {
-                'welcome_settings': {
-                    str(chat_id): settings
-                    for chat_id, settings in self.welcome_settings.items()
-                },
-                'last_updated': asyncio.get_event_loop().time()
-            }
-
-            async with aiofiles.open(self.data_path, 'w') as f:
-                await f.write(json.dumps(data, indent=2))
-
-        except Exception as e:
-            logger.error(f"Error saving welcome settings: {e}")
+    def __init__(self, database=None):
+        self.database = database
+        logger.info("WelcomeManager initialized with Database backend")
 
     async def set_welcome_message(self, chat_id: int, message: str, enabled: bool = True) -> bool:
         """Set welcome message for a chat"""
         try:
-            if chat_id not in self.welcome_settings:
-                self.welcome_settings[chat_id] = {}
+            if not self.database:
+                logger.error("Database not initialized")
+                return False
 
-            self.welcome_settings[chat_id].update({
-                'message': message,
-                'enabled': enabled,
-                'set_by': 'admin',
-                'timestamp': asyncio.get_event_loop().time()
-            })
-
-            await self.save_welcome_settings()
+            self.database.set_welcome(chat_id, message, enabled)
             logger.info(f"Set welcome message for chat {chat_id}")
             return True
 
@@ -89,19 +40,20 @@ class WelcomeManager:
     async def toggle_welcome(self, chat_id: int) -> Optional[bool]:
         """Toggle welcome on/off for a chat"""
         try:
-            if chat_id not in self.welcome_settings:
-                self.welcome_settings[chat_id] = {
-                    'message': "👋 Welcome to the group!",
-                    'enabled': True
-                }
-            else:
-                current_state = self.welcome_settings[chat_id].get('enabled', False)
-                self.welcome_settings[chat_id]['enabled'] = not current_state
+            if not self.database:
+                logger.error("Database not initialized")
+                return None
 
-            await self.save_welcome_settings()
-            new_state = self.welcome_settings[chat_id]['enabled']
-            logger.info(f"Toggled welcome for chat {chat_id}: {new_state}")
-            return new_state
+            welcome_data = self.database.get_welcome(chat_id)
+
+            if not welcome_data:
+                # Set default
+                self.database.set_welcome(chat_id, "👋 Welcome to the group!", True)
+                return True
+            else:
+                current_state = welcome_data.get('enabled', False)
+                self.database.toggle_welcome(chat_id, not current_state)
+                return not current_state
 
         except Exception as e:
             logger.error(f"Error toggling welcome: {e}")
@@ -138,13 +90,17 @@ class WelcomeManager:
 
     def is_welcome_enabled(self, chat_id: int) -> bool:
         """Check if welcome is enabled for a chat"""
-        settings = self.welcome_settings.get(chat_id, {})
-        return settings.get('enabled', False)
+        if not self.database:
+            return False
+        welcome_data = self.database.get_welcome(chat_id)
+        return welcome_data.get('enabled', False) if welcome_data else False
 
     def get_welcome_message(self, chat_id: int) -> Optional[str]:
         """Get welcome message for a chat"""
-        settings = self.welcome_settings.get(chat_id, {})
-        return settings.get('message')
+        if not self.database:
+            return None
+        welcome_data = self.database.get_welcome(chat_id)
+        return welcome_data.get('message') if welcome_data else None
 
     async def _format_welcome_message(self, message: str, user, chat) -> str:
         """Format welcome message with placeholders"""
@@ -218,13 +174,16 @@ class WelcomeManager:
 
     def get_welcome_status(self, chat_id: int) -> str:
         """Get welcome status for a chat"""
-        settings = self.welcome_settings.get(chat_id, {})
+        if not self.database:
+            return "❌ Database not configured"
 
-        if not settings:
+        welcome_data = self.database.get_welcome(chat_id)
+
+        if not welcome_data:
             return "❌ Welcome system not configured for this chat"
 
-        enabled = settings.get('enabled', False)
-        message = settings.get('message', 'Default message')
+        enabled = welcome_data.get('enabled', False)
+        message = welcome_data.get('message', 'Default message')
 
         status = f"📊 **Welcome System Status**\n\n"
         status += f"Status: {'🟢 Enabled' if enabled else '🔴 Disabled'}\n"
@@ -232,19 +191,15 @@ class WelcomeManager:
 
         return status
 
-    def get_all_welcome_chats(self) -> Dict[int, Dict]:
-        """Get all chats with welcome configured"""
-        return self.welcome_settings.copy()
-
     async def remove_welcome(self, chat_id: int) -> bool:
         """Remove welcome configuration for a chat"""
         try:
-            if chat_id in self.welcome_settings:
-                del self.welcome_settings[chat_id]
-                await self.save_welcome_settings()
-                logger.info(f"Removed welcome configuration for chat {chat_id}")
-                return True
-            return False
+            if not self.database:
+                return False
+
+            self.database.set_welcome(chat_id, "", False)
+            logger.info(f"Removed welcome configuration for chat {chat_id}")
+            return True
 
         except Exception as e:
             logger.error(f"Error removing welcome: {e}")
@@ -252,14 +207,12 @@ class WelcomeManager:
 
     def get_welcome_stats(self) -> Dict:
         """Get welcome system statistics"""
-        total_chats = len(self.welcome_settings)
-        enabled_chats = sum(
-            1 for settings in self.welcome_settings.values()
-            if settings.get('enabled', False)
-        )
+        if not self.database:
+            return {'total_configured_chats': 0, 'enabled_chats': 0, 'disabled_chats': 0}
 
+        stats = self.database.get_stats()
         return {
-            'total_configured_chats': total_chats,
-            'enabled_chats': enabled_chats,
-            'disabled_chats': total_chats - enabled_chats
+            'total_configured_chats': stats.get('welcome_chats', 0),
+            'enabled_chats': stats.get('welcome_chats', 0),  # Simplified
+            'disabled_chats': 0
         }

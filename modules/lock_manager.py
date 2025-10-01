@@ -4,96 +4,33 @@ Lock System Manager
 Handles /lock @username commands with auto-delete functionality
 
 Author: VanZoel112
-Version: 2.0.0 Python
+Version: 2.0.0 Python (Database-backed)
 """
 
 import asyncio
 import logging
-import json
 import time
-from typing import Dict, Set, List, Optional
-from pathlib import Path
+from typing import Dict, List, Optional
 from telethon.tl.types import MessageEntityMentionName
 import config
 
 logger = logging.getLogger(__name__)
 
 class LockManager:
-    """Manages user locking and auto-deletion"""
+    """Manages user locking and auto-deletion (Database-backed)"""
 
-    def __init__(self):
-        
-        self.data_path = Path("data/locked_users.json")
-        self.locked_users: Dict[int, Set[int]] = {}  # chat_id -> set of locked user_ids
-        self.lock_reasons: Dict[int, Dict[int, str]] = {}  # chat_id -> user_id -> reason
-        self.lock_timestamps: Dict[int, Dict[int, float]] = {}  # chat_id -> user_id -> timestamp
-
-        # Load existing locks
-        asyncio.create_task(self.load_locked_users())
-
-    async def load_locked_users(self):
-        """Load locked users from file"""
-        try:
-            if self.data_path.exists():
-                async with aiofiles.open(self.data_path, 'r') as f:
-                    data = json.loads(await f.read())
-
-                # Convert string keys back to integers
-                for chat_id_str, user_data in data.get('locked_users', {}).items():
-                    chat_id = int(chat_id_str)
-                    self.locked_users[chat_id] = set(user_data.get('users', []))
-                    self.lock_reasons[chat_id] = user_data.get('reasons', {})
-                    self.lock_timestamps[chat_id] = user_data.get('timestamps', {})
-
-                logger.info(f"Loaded {sum(len(users) for users in self.locked_users.values())} locked users")
-
-        except Exception as e:
-            logger.error(f"Error loading locked users: {e}")
-            self.locked_users = {}
-            self.lock_reasons = {}
-            self.lock_timestamps = {}
-
-    async def save_locked_users(self):
-        """Save locked users to file"""
-        try:
-            # Ensure data directory exists
-            self.data_path.parent.mkdir(exist_ok=True)
-
-            # Convert sets to lists for JSON serialization
-            data = {
-                'locked_users': {},
-                'last_updated': time.time()
-            }
-
-            for chat_id, user_set in self.locked_users.items():
-                data['locked_users'][str(chat_id)] = {
-                    'users': list(user_set),
-                    'reasons': self.lock_reasons.get(chat_id, {}),
-                    'timestamps': self.lock_timestamps.get(chat_id, {})
-                }
-
-            async with aiofiles.open(self.data_path, 'w') as f:
-                await f.write(json.dumps(data, indent=2))
-
-            logger.debug("Saved locked users to file")
-
-        except Exception as e:
-            logger.error(f"Error saving locked users: {e}")
+    def __init__(self, database=None):
+        self.database = database
+        logger.info("LockManager initialized with Database backend")
 
     async def lock_user(self, chat_id: int, user_id: int, reason: str = "Locked by admin") -> bool:
         """Lock a user in a specific chat"""
         try:
-            if chat_id not in self.locked_users:
-                self.locked_users[chat_id] = set()
-                self.lock_reasons[chat_id] = {}
-                self.lock_timestamps[chat_id] = {}
+            if not self.database:
+                logger.error("Database not initialized")
+                return False
 
-            self.locked_users[chat_id].add(user_id)
-            self.lock_reasons[chat_id][user_id] = reason
-            self.lock_timestamps[chat_id][user_id] = time.time()
-
-            await self.save_locked_users()
-
+            self.database.lock_user(chat_id, user_id)
             logger.info(f"Locked user {user_id} in chat {chat_id}: {reason}")
             return True
 
@@ -104,17 +41,13 @@ class LockManager:
     async def unlock_user(self, chat_id: int, user_id: int) -> bool:
         """Unlock a user in a specific chat"""
         try:
-            if chat_id in self.locked_users and user_id in self.locked_users[chat_id]:
-                self.locked_users[chat_id].discard(user_id)
-                self.lock_reasons[chat_id].pop(user_id, None)
-                self.lock_timestamps[chat_id].pop(user_id, None)
+            if not self.database:
+                logger.error("Database not initialized")
+                return False
 
-                await self.save_locked_users()
-
-                logger.info(f"Unlocked user {user_id} in chat {chat_id}")
-                return True
-
-            return False
+            self.database.unlock_user(chat_id, user_id)
+            logger.info(f"Unlocked user {user_id} in chat {chat_id}")
+            return True
 
         except Exception as e:
             logger.error(f"Error unlocking user {user_id} in chat {chat_id}: {e}")
@@ -122,7 +55,9 @@ class LockManager:
 
     def is_user_locked(self, chat_id: int, user_id: int) -> bool:
         """Check if a user is locked in a specific chat"""
-        return chat_id in self.locked_users and user_id in self.locked_users[chat_id]
+        if not self.database:
+            return False
+        return self.database.is_locked(chat_id, user_id)
 
     async def process_message_for_locked_users(self, client, message) -> bool:
         """Check message and delete if from locked user"""
@@ -201,105 +136,22 @@ class LockManager:
             logger.error(f"Error extracting user from mention: {e}")
             return None
 
-    def get_locked_users_in_chat(self, chat_id: int) -> List[Dict]:
-        """Get all locked users in a chat with details"""
-        if chat_id not in self.locked_users:
-            return []
+    def get_locked_users(self, chat_id: int) -> Dict:
+        """Get all locked users in a chat"""
+        if not self.database:
+            return {}
 
-        locked_list = []
-        for user_id in self.locked_users[chat_id]:
-            locked_list.append({
-                'user_id': user_id,
-                'reason': self.lock_reasons.get(chat_id, {}).get(user_id, 'Unknown'),
-                'timestamp': self.lock_timestamps.get(chat_id, {}).get(user_id, 0),
-                'locked_since': time.time() - self.lock_timestamps.get(chat_id, {}).get(user_id, time.time())
-            })
-
-        return sorted(locked_list, key=lambda x: x['timestamp'], reverse=True)
+        locked_ids = self.database.get_locked_users(chat_id)
+        return {user_id: {'reason': 'Locked by admin'} for user_id in locked_ids}
 
     def get_lock_stats(self) -> Dict:
         """Get lock system statistics"""
-        total_locked = sum(len(users) for users in self.locked_users.values())
-        chats_with_locks = len([chat for chat, users in self.locked_users.items() if users])
+        if not self.database:
+            return {'total_locked_users': 0, 'chats_with_locks': 0}
 
+        # Get stats from database
+        stats = self.database.get_stats()
         return {
-            'total_locked_users': total_locked,
-            'chats_with_locks': chats_with_locks,
-            'total_chats': len(self.locked_users)
+            'total_locked_users': stats.get('locked_users', 0),
+            'chats_with_locks': len([k for k, v in self.database.data.get('locks', {}).items() if v])
         }
-
-    def format_locked_users_list(self, chat_id: int) -> str:
-        """Format locked users list for display"""
-        locked_users = self.get_locked_users_in_chat(chat_id)
-
-        if not locked_users:
-            return "🔓 No locked users in this chat."
-
-        response = f"🔒 **Locked Users ({len(locked_users)}):**\n\n"
-
-        for i, user_info in enumerate(locked_users[:10], 1):  # Limit to 10 for readability
-            user_id = user_info['user_id']
-            reason = user_info['reason']
-            days_ago = int(user_info['locked_since'] / 86400)
-
-            response += f"{i}. User ID: `{user_id}`\n"
-            response += f"   Reason: {reason}\n"
-            response += f"   Locked: {days_ago} days ago\n\n"
-
-        if len(locked_users) > 10:
-            response += f"... and {len(locked_users) - 10} more users\n"
-
-        response += f"\n💡 Use `/unlock <user_id>` to unlock users"
-
-        return response
-
-    async def clear_all_locks_in_chat(self, chat_id: int) -> int:
-        """Clear all locks in a specific chat"""
-        try:
-            if chat_id in self.locked_users:
-                count = len(self.locked_users[chat_id])
-                self.locked_users[chat_id].clear()
-                self.lock_reasons[chat_id].clear()
-                self.lock_timestamps[chat_id].clear()
-
-                await self.save_locked_users()
-
-                logger.info(f"Cleared all {count} locks in chat {chat_id}")
-                return count
-
-            return 0
-
-        except Exception as e:
-            logger.error(f"Error clearing locks in chat {chat_id}: {e}")
-            return 0
-
-    async def cleanup_old_locks(self, max_age_days: int = 30):
-        """Clean up locks older than specified days"""
-        try:
-            current_time = time.time()
-            max_age_seconds = max_age_days * 24 * 3600
-            cleaned_count = 0
-
-            for chat_id in list(self.locked_users.keys()):
-                users_to_remove = []
-
-                for user_id in list(self.locked_users[chat_id]):
-                    lock_time = self.lock_timestamps.get(chat_id, {}).get(user_id, current_time)
-                    if current_time - lock_time > max_age_seconds:
-                        users_to_remove.append(user_id)
-
-                for user_id in users_to_remove:
-                    self.locked_users[chat_id].discard(user_id)
-                    self.lock_reasons[chat_id].pop(user_id, None)
-                    self.lock_timestamps[chat_id].pop(user_id, None)
-                    cleaned_count += 1
-
-            if cleaned_count > 0:
-                await self.save_locked_users()
-                logger.info(f"Cleaned up {cleaned_count} old locks")
-
-            return cleaned_count
-
-        except Exception as e:
-            logger.error(f"Error cleaning up old locks: {e}")
-            return 0

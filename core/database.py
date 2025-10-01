@@ -13,17 +13,25 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import asyncio
+import subprocess
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class Database:
     """JSON database manager with auto-backup"""
 
-    def __init__(self, db_path: str = "data/database.json"):
+    def __init__(self, db_path: str = "data/database.json", enable_auto_backup: bool = True):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(exist_ok=True)
         self.data = self._load()
         self._ensure_structure()
+
+        # Auto-backup settings
+        self.enable_auto_backup = enable_auto_backup
+        self.backup_task = None
+        self.backup_pending = False
+        self.last_backup = None
 
     def _load(self) -> Dict:
         """Load database from file"""
@@ -42,6 +50,17 @@ class Database:
             with open(self.db_path, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=2, ensure_ascii=False)
             logger.debug("Database saved successfully")
+
+            # Schedule auto-backup if enabled
+            if self.enable_auto_backup and not self.backup_pending:
+                self.backup_pending = True
+                # Use asyncio to schedule backup after 5 seconds (debounce)
+                try:
+                    asyncio.create_task(self._delayed_backup())
+                except RuntimeError:
+                    # If no event loop is running, skip async backup
+                    pass
+
         except Exception as e:
             logger.error(f"Error saving database: {e}")
 
@@ -230,3 +249,121 @@ class Database:
         """Import database from JSON string"""
         self.data = json.loads(data)
         self._save()
+
+    # ==============================================
+    # GITHUB AUTO-BACKUP
+    # ==============================================
+
+    async def _delayed_backup(self):
+        """Delayed backup with debounce (5 seconds)"""
+        await asyncio.sleep(5)
+        await self.backup_to_github()
+        self.backup_pending = False
+
+    async def backup_to_github(self) -> bool:
+        """Backup database to GitHub"""
+        try:
+            # Check if git is configured
+            result = subprocess.run(
+                ['git', 'rev-parse', '--git-dir'],
+                capture_output=True,
+                text=True,
+                cwd=str(self.db_path.parent.parent)
+            )
+
+            if result.returncode != 0:
+                logger.warning("Not a git repository - skipping auto-backup")
+                return False
+
+            # Add database file
+            subprocess.run(
+                ['git', 'add', str(self.db_path.relative_to(self.db_path.parent.parent))],
+                cwd=str(self.db_path.parent.parent),
+                check=False
+            )
+
+            # Check if there are changes
+            result = subprocess.run(
+                ['git', 'diff', '--cached', '--quiet'],
+                cwd=str(self.db_path.parent.parent)
+            )
+
+            if result.returncode == 0:
+                # No changes
+                logger.debug("No database changes to backup")
+                return True
+
+            # Commit changes
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            commit_msg = f"Auto-backup database - {timestamp}"
+
+            subprocess.run(
+                ['git', 'commit', '-m', commit_msg],
+                cwd=str(self.db_path.parent.parent),
+                capture_output=True,
+                check=False
+            )
+
+            # Push to remote (non-blocking)
+            subprocess.Popen(
+                ['git', 'push', 'origin', 'main'],
+                cwd=str(self.db_path.parent.parent),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+            self.last_backup = datetime.now()
+            logger.info(f"✅ Database backed up to GitHub")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to backup to GitHub: {e}")
+            return False
+
+    async def manual_backup(self, commit_message: str = None) -> bool:
+        """Manual backup to GitHub with custom commit message"""
+        try:
+            # Add database file
+            subprocess.run(
+                ['git', 'add', str(self.db_path.relative_to(self.db_path.parent.parent))],
+                cwd=str(self.db_path.parent.parent),
+                check=True
+            )
+
+            # Commit with custom message
+            if not commit_message:
+                commit_message = f"Manual database backup - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+            subprocess.run(
+                ['git', 'commit', '-m', commit_message],
+                cwd=str(self.db_path.parent.parent),
+                capture_output=True,
+                check=False
+            )
+
+            # Push to remote
+            result = subprocess.run(
+                ['git', 'push', 'origin', 'main'],
+                cwd=str(self.db_path.parent.parent),
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                logger.info("✅ Manual backup successful")
+                return True
+            else:
+                logger.error(f"Failed to push: {result.stderr}")
+                return False
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Manual backup failed: {e}")
+            return False
+
+    def get_backup_stats(self) -> Dict:
+        """Get backup statistics"""
+        return {
+            'auto_backup_enabled': self.enable_auto_backup,
+            'last_backup': self.last_backup.isoformat() if self.last_backup else None,
+            'backup_pending': self.backup_pending
+        }
