@@ -11,19 +11,11 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from datetime import datetime
 
-# Setup logging
-log_dir = Path('logs')
-log_dir.mkdir(exist_ok=True)
+# Import advanced logging system
+from core.logger import setup_logging, vbot_logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_dir / 'vbot.log'),
-        logging.StreamHandler()
-    ]
-)
 logger = logging.getLogger(__name__)
 
 # Import configuration and validate
@@ -76,6 +68,18 @@ class VBot:
 
             # Get bot info
             me = await self.client.get_me()
+
+            # Setup advanced logging system with Telegram & SQL integration
+            await setup_logging(self.client)
+
+            # Log startup with bot info
+            bot_info = {
+                'first_name': me.first_name,
+                'username': me.username,
+                'user_id': me.id
+            }
+            await vbot_logger.log_startup(bot_info)
+
             logger.info(f"🎵 VBot started successfully!")
             logger.info(f"Bot: {me.first_name} (@{me.username})")
 
@@ -213,8 +217,10 @@ class VBot:
 
     async def _handle_command(self, message):
         """Handle bot commands"""
+        start_time = datetime.now()
+        command_text = message.text.lower()
+
         try:
-            command_text = message.text.lower()
             command_parts = command_text.split()
             command = command_parts[0]
 
@@ -227,6 +233,16 @@ class VBot:
                 command_type = self.auth_manager.get_command_type(command_text)
                 error_msg = self.auth_manager.get_permission_error_message(command_type)
 
+                # Log failed permission check
+                execution_time = (datetime.now() - start_time).total_seconds()
+                await vbot_logger.log_command(
+                    message.sender_id,
+                    command_text,
+                    success=False,
+                    execution_time=execution_time,
+                    error="Permission denied"
+                )
+
                 if config.ENABLE_PRIVACY_SYSTEM:
                     await self.privacy_manager.process_private_command(
                         self.client, message, error_msg
@@ -238,8 +254,32 @@ class VBot:
             # Route commands
             await self._route_command(message, command, command_parts)
 
+            # Log successful command execution
+            execution_time = (datetime.now() - start_time).total_seconds()
+            await vbot_logger.log_command(
+                message.sender_id,
+                command_text,
+                success=True,
+                execution_time=execution_time
+            )
+
         except Exception as e:
-            logger.error(f"Error handling command: {e}")
+            # Log error with full context
+            execution_time = (datetime.now() - start_time).total_seconds()
+            await vbot_logger.log_error(
+                e,
+                context=f"Command execution: {command_text}",
+                user_id=message.sender_id,
+                send_to_telegram=True
+            )
+
+            await vbot_logger.log_command(
+                message.sender_id,
+                command_text,
+                success=False,
+                execution_time=execution_time,
+                error=str(e)
+            )
 
     async def _route_command(self, message, command, parts):
         """Route commands to appropriate handlers"""
@@ -1299,9 +1339,12 @@ Contact: @VZLfxs
             logger.error("❌ Failed to start VBot")
             sys.exit(1)
 
-    async def stop(self):
+    async def stop(self, reason: str = "Manual shutdown"):
         """Stop VBot gracefully"""
         logger.info("🛑 Stopping VBot...")
+
+        # Log shutdown to Telegram
+        await vbot_logger.log_shutdown(reason)
 
         if self.tag_manager:
             await self.tag_manager.force_stop_all_tags()
@@ -1316,6 +1359,9 @@ Contact: @VZLfxs
         if self.client:
             await self.client.disconnect()
 
+        # Stop logging system
+        vbot_logger.stop()
+
         logger.info("👋 VBot stopped")
 
 async def main():
@@ -1325,10 +1371,10 @@ async def main():
     try:
         await vbot.run()
     except KeyboardInterrupt:
-        await vbot.stop()
+        await vbot.stop("Keyboard interrupt (Ctrl+C)")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
-        await vbot.stop()
+        await vbot.stop(f"Fatal error: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
