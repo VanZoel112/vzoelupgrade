@@ -89,8 +89,12 @@ class AuthManager:
         if await self.is_developer(user_id):
             return True
 
-        # Check if user is admin in the chat
+        # Check if user is admin in the chat (Telegram admin)
         if await self.is_admin_in_chat(client, user_id, chat_id):
+            return True
+
+        # Check if user is group admin (database)
+        if self.database and self.database.is_group_admin(chat_id, user_id):
             return True
 
         # Check if user has explicit permission (from database)

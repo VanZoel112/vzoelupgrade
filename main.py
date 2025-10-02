@@ -330,6 +330,8 @@ class VBot:
                 await self._handle_promote_command(message, parts)
             elif command == '/dm':
                 await self._handle_demote_command(message, parts)
+            elif command in ['/adminlist', '/admins']:
+                await self._handle_adminlist_command(message)
 
             # Music commands (slash prefix)
             elif command in ['/play', '/p']:
@@ -916,6 +918,168 @@ class VBot:
         except Exception as e:
             await message.reply(f"❌ Error unlocking user: {str(e)}")
 
+    async def _handle_promote_command(self, message, parts):
+        """Handle /pm command - Promote user to group admin"""
+        try:
+            # Only works in groups
+            if message.is_private:
+                await message.reply("❌ **Admin management only works in groups**")
+                return
+
+            # Get user from reply or arguments
+            user_id = None
+            user_name = None
+
+            if message.is_reply:
+                reply_msg = await message.get_reply_message()
+                user_id = reply_msg.sender_id
+                sender = await reply_msg.get_sender()
+                user_name = sender.first_name if sender else f"User {user_id}"
+            elif len(parts) >= 2:
+                try:
+                    user_id = int(parts[1])
+                    # Try to get user info
+                    try:
+                        user = await self.client.get_entity(user_id)
+                        user_name = user.first_name
+                    except:
+                        user_name = f"User {user_id}"
+                except ValueError:
+                    await message.reply("❌ **Invalid user ID**\n\nUsage: /pm <user_id> or reply to user")
+                    return
+            else:
+                await message.reply(
+                    "**Promote User to Group Admin**\n\n"
+                    "**Usage:**\n"
+                    "• Reply to user message and type /pm\n"
+                    "• /pm <user_id>"
+                )
+                return
+
+            # Check if already admin
+            if self.database.is_group_admin(message.chat_id, user_id):
+                await message.reply(f"⚠️ **{user_name}** is already a group admin")
+                return
+
+            # Add to group admins
+            success = self.database.add_group_admin(message.chat_id, user_id)
+
+            if success:
+                content = (
+                    f"✅ **Admin Promoted**\n\n"
+                    f"**User:** {user_name}\n"
+                    f"**User ID:** `{user_id}`\n\n"
+                    f"User can now use admin commands (/) in this group"
+                )
+                await message.reply(VBotBranding.wrap_message(content, include_footer=False))
+            else:
+                await message.reply("❌ Failed to promote user")
+
+        except Exception as e:
+            logger.error(f"Error promoting admin: {e}")
+            await message.reply(f"❌ Error promoting user: {str(e)}")
+
+    async def _handle_demote_command(self, message, parts):
+        """Handle /dm command - Demote user from group admin"""
+        try:
+            # Only works in groups
+            if message.is_private:
+                await message.reply("❌ **Admin management only works in groups**")
+                return
+
+            # Get user from reply or arguments
+            user_id = None
+            user_name = None
+
+            if message.is_reply:
+                reply_msg = await message.get_reply_message()
+                user_id = reply_msg.sender_id
+                sender = await reply_msg.get_sender()
+                user_name = sender.first_name if sender else f"User {user_id}"
+            elif len(parts) >= 2:
+                try:
+                    user_id = int(parts[1])
+                    # Try to get user info
+                    try:
+                        user = await self.client.get_entity(user_id)
+                        user_name = user.first_name
+                    except:
+                        user_name = f"User {user_id}"
+                except ValueError:
+                    await message.reply("❌ **Invalid user ID**\n\nUsage: /dm <user_id> or reply to user")
+                    return
+            else:
+                await message.reply(
+                    "**Demote User from Group Admin**\n\n"
+                    "**Usage:**\n"
+                    "• Reply to user message and type /dm\n"
+                    "• /dm <user_id>"
+                )
+                return
+
+            # Check if user is group admin
+            if not self.database.is_group_admin(message.chat_id, user_id):
+                await message.reply(f"⚠️ **{user_name}** is not a group admin")
+                return
+
+            # Remove from group admins
+            success = self.database.remove_group_admin(message.chat_id, user_id)
+
+            if success:
+                content = (
+                    f"✅ **Admin Demoted**\n\n"
+                    f"**User:** {user_name}\n"
+                    f"**User ID:** `{user_id}`\n\n"
+                    f"User can no longer use admin commands (/) in this group"
+                )
+                await message.reply(VBotBranding.wrap_message(content, include_footer=False))
+            else:
+                await message.reply("❌ Failed to demote user")
+
+        except Exception as e:
+            logger.error(f"Error demoting admin: {e}")
+            await message.reply(f"❌ Error demoting user: {str(e)}")
+
+    async def _handle_adminlist_command(self, message):
+        """Handle /adminlist command - Show group admins"""
+        try:
+            # Only works in groups
+            if message.is_private:
+                await message.reply("❌ **Admin list only works in groups**")
+                return
+
+            # Get group admins from database
+            group_admins = self.database.get_group_admins(message.chat_id)
+
+            content = "**Group Admin List**\n\n"
+
+            if not group_admins:
+                content += (
+                    "No bot-managed admins in this group.\n\n"
+                    "**Note:** This list only shows admins promoted via /pm\n"
+                    "Telegram admins can always use admin commands.\n\n"
+                    "**Usage:** Reply to user and type /pm to promote"
+                )
+            else:
+                content += f"**Total Bot Admins:** {len(group_admins)}\n\n"
+                content += "**Admin Users:**\n"
+
+                for i, admin_id in enumerate(group_admins, 1):
+                    try:
+                        user = await self.client.get_entity(admin_id)
+                        username = f"@{user.username}" if user.username else user.first_name
+                        content += f"{i}. {username} (`{admin_id}`)\n"
+                    except:
+                        content += f"{i}. User ID: `{admin_id}`\n"
+
+                content += "\n**Note:** Each group has separate admin list"
+
+            await message.reply(VBotBranding.wrap_message(content, include_footer=False))
+
+        except Exception as e:
+            logger.error(f"Error getting admin list: {e}")
+            await message.reply(f"❌ Error getting admin list: {str(e)}")
+
     async def _handle_tag_command(self, message, parts):
         """Handle /tag command"""
         if not config.ENABLE_TAG_SYSTEM:
@@ -1326,6 +1490,35 @@ Contact: @VZLfxs
             logger.error(f"Error in /dm command: {e}")
             await message.reply(f"❌ Error demoting user: {str(e)}")
 
+    async def _handle_adminlist_command(self, message):
+        """Handle /adminlist command - show group admins"""
+        try:
+            # Get group admins from database
+            group_admins = self.database.get_group_admins(message.chat_id)
+
+            content = f"**Group Admins for This Chat**\n\n"
+
+            if not group_admins:
+                content += "No bot-managed admins in this group.\n\n"
+                content += "Use /pm to promote users."
+            else:
+                content += f"**Total:** {len(group_admins)} admin(s)\n\n"
+
+                # Get user info for each admin
+                for i, user_id in enumerate(group_admins, 1):
+                    try:
+                        user = await self.client.get_entity(user_id)
+                        username = f"@{user.username}" if user.username else user.first_name
+                        content += f"{i}. {username} (`{user_id}`)\n"
+                    except:
+                        content += f"{i}. User ID: `{user_id}`\n"
+
+            await message.reply(VBotBranding.wrap_message(content))
+
+        except Exception as e:
+            logger.error(f"Error in /adminlist command: {e}")
+            await message.reply(VBotBranding.format_error(f"Failed to get admin list: {str(e)}"))
+
     async def _handle_cancel_tag_command(self, message):
         """Handle /cancel command - stop ongoing tag operation"""
         try:
@@ -1610,15 +1803,17 @@ Contact: @VZLfxs
                     help_content = (
                         "**👥 Admin Commands**\n\n"
                         "**User Management:**\n"
-                        "/pm <user> - Promote user to admin\n"
-                        "/dm <user> - Demote user from admin\n\n"
+                        "/pm <user> - Promote user to group admin\n"
+                        "/dm <user> - Demote user from group admin\n"
+                        "/adminlist - View all group admins\n\n"
                         "**Moderation:**\n"
                         "/lock <user> - Lock user (auto-delete)\n"
                         "/unlock <user> - Unlock user\n"
                         "/locklist - View locked users\n\n"
                         "**Group Tools:**\n"
                         "/tagall <text> - Tag all members\n"
-                        "/cancel - Cancel tag operation"
+                        "/cancel - Cancel tag operation\n\n"
+                        "**Note:** Each group has separate admin list"
                     )
 
                 elif category == 'owner':

@@ -183,6 +183,59 @@ class Database:
         chat_key = str(chat_id)
         return self.data['welcome'].get(chat_key)
 
+    # ==============================================
+    # MULTI-GROUP ADMIN MANAGEMENT
+    # ==============================================
+
+    def add_group_admin(self, chat_id: int, user_id: int) -> bool:
+        """Add user as admin in specific group"""
+        chat_key = str(chat_id)
+        if chat_key not in self.data['admins']:
+            self.data['admins'][chat_key] = []
+
+        if user_id not in self.data['admins'][chat_key]:
+            self.data['admins'][chat_key].append(user_id)
+            self._save()
+            return True
+        return False
+
+    def remove_group_admin(self, chat_id: int, user_id: int) -> bool:
+        """Remove user from group admins"""
+        chat_key = str(chat_id)
+        if chat_key in self.data['admins'] and user_id in self.data['admins'][chat_key]:
+            self.data['admins'][chat_key].remove(user_id)
+            self._save()
+            return True
+        return False
+
+    def is_group_admin(self, chat_id: int, user_id: int) -> bool:
+        """Check if user is admin in specific group"""
+        chat_key = str(chat_id)
+        return chat_key in self.data['admins'] and user_id in self.data['admins'][chat_key]
+
+    def get_group_admins(self, chat_id: int) -> List[int]:
+        """Get list of admins in specific group"""
+        chat_key = str(chat_id)
+        return self.data['admins'].get(chat_key, [])
+
+    def get_all_groups(self) -> List[int]:
+        """Get list of all groups with data"""
+        group_ids = set()
+
+        # From admins
+        for chat_key in self.data.get('admins', {}).keys():
+            group_ids.add(int(chat_key))
+
+        # From locks
+        for chat_key in self.data.get('locks', {}).keys():
+            group_ids.add(int(chat_key))
+
+        # From welcome
+        for chat_key in self.data.get('welcome', {}).keys():
+            group_ids.add(int(chat_key))
+
+        return list(group_ids)
+
     def toggle_welcome(self, chat_id: int, enabled: bool):
         """Enable/disable welcome"""
         chat_key = str(chat_id)
