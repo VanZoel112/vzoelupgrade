@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Music Manager with Voice Chat Streaming
 Uses py-tgcalls for real-time audio streaming
@@ -26,14 +25,16 @@ except ImportError:
 
 try:
     from pytgcalls import PyTgCalls
-    from pytgcalls.types import MediaStream, AudioQuality, GroupCallConfig
+    from pytgcalls.types import MediaStream, AudioQuality, VideoQuality, GroupCallConfig
     PYTGCALLS_AVAILABLE = True
 except ImportError:
     PYTGCALLS_AVAILABLE = False
     logger.warning("py-tgcalls not available - install with: pip install py-tgcalls")
     MediaStream = None
     AudioQuality = None
+    VideoQuality = None
     GroupCallConfig = None
+
 
 class MusicManager:
     """Music manager with voice chat streaming support"""
@@ -53,6 +54,9 @@ class MusicManager:
 
         # Currently playing
         self.current_song: Dict[int, Dict] = {}
+
+        # Streaming mode per chat ('audio' or 'video')
+        self.stream_mode: Dict[int, str] = {}
 
         # Active voice chats
         self.active_calls: Dict[int, bool] = {}
@@ -79,129 +83,106 @@ class MusicManager:
                 self.streaming_available = False
 
     async def start(self):
-        """Start music manager"""
-        if self.pytgcalls and self.streaming_available:
-            try:
-                await self.pytgcalls.start()
-                logger.info("🎵 Music streaming system ready (voice chat mode)")
-            except Exception as e:
-                logger.error(f"Failed to start PyTgCalls: {e}")
-                self.streaming_available = False
+        """Placeholder for any async initialisation if needed."""
+        return True
 
-        if not self.streaming_available:
-            logger.info("🎵 Music system ready (download mode - no streaming)")
-
-    async def stop(self):
-        """Stop music manager and leave all voice chats"""
-        if self.pytgcalls:
-            try:
-                # Leave all active voice chats
-                for chat_id in list(self.active_calls.keys()):
-                    await self.leave_voice_chat(chat_id)
-                logger.info("Stopped music manager")
-            except Exception as e:
-                logger.error(f"Error stopping music manager: {e}")
+    # ---------------------------------------------------------------------
+    # Search & Download helpers
+    # ---------------------------------------------------------------------
 
     async def search_song(self, query: str) -> Optional[Dict]:
-        """Search for song on YouTube"""
+        """Search a song using yt-dlp and return basic metadata dict."""
         if not YTDLP_AVAILABLE:
             return None
 
-        try:
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'noplaylist': True,
-                'quiet': True,
-                'no_warnings': True,
-                'extract_flat': False,
-            }
+        ydl_opts = {
+            "quiet": True,
+            "default_search": "ytsearch",
+            "noplaylist": True,
+            "skip_download": True,
+            "extract_flat": False,
+        }
 
-            # Add cookies if configured
-            if config.YOUTUBE_COOKIES_FROM_BROWSER:
-                ydl_opts['cookiesfrombrowser'] = (config.YOUTUBE_COOKIES_FROM_BROWSER,)
-            elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
-                ydl_opts['cookiefile'] = config.YOUTUBE_COOKIES_FILE
+        # cookies handling
+        if config.YOUTUBE_COOKIES_FROM_BROWSER:
+            ydl_opts["cookiesfrombrowser"] = (config.YOUTUBE_COOKIES_FROM_BROWSER,)
+        elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+            ydl_opts["cookiefile"] = config.YOUTUBE_COOKIES_FILE
 
+        def _extract():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Search YouTube
-                search_query = f"ytsearch:{query}" if not query.startswith('http') else query
-                info = ydl.extract_info(search_query, download=False)
+                info = ydl.extract_info(query, download=False)
+                if "_type" in info and info["_type"] == "playlist":
+                    entries = info.get("entries") or []
+                    info = entries[0] if entries else None
+                return info
 
-                if 'entries' in info:
-                    info = info['entries'][0]
-
-                return {
-                    'title': info.get('title', 'Unknown'),
-                    'url': info.get('url'),
-                    'webpage_url': info.get('webpage_url'),
-                    'duration': info.get('duration', 0),
-                    'thumbnail': info.get('thumbnail'),
-                }
-
-        except Exception as e:
-            logger.error(f"Error searching song: {e}")
+        loop = asyncio.get_running_loop()
+        info = await loop.run_in_executor(None, _extract)
+        if not info:
             return None
 
-    async def download_audio(self, url: str, title: str, audio_only: bool = True) -> Optional[str]:
-        """Download media from YouTube
+        return {
+            "title": info.get("title"),
+            "url": info.get("url") or info.get("webpage_url"),
+            "webpage_url": info.get("webpage_url") or info.get("original_url") or info.get("url"),
+            "duration": info.get("duration"),
+            "uploader": info.get("uploader"),
+            "thumbnail": info.get("thumbnail"),
+        }
 
-        Args:
-            audio_only: If True, extract audio (MP3). If False, download video (MP4).
-        """
+    async def download_audio(self, url: str, title_prefix: str, audio_only: bool = True) -> Optional[str]:
+        """Download media (audio/video) using yt-dlp and return file path."""
         if not YTDLP_AVAILABLE:
             return None
 
-        try:
-            # Output path
-            output_template = str(self.download_path / f"{title}.%(ext)s")
+        safe_prefix = "".join(c for c in title_prefix if c.isalnum() or c in " _-").rstrip()
+        outtmpl = str(self.download_path / f"{safe_prefix} - %(id)s.%(ext)s")
 
-            if audio_only:
-                # Audio only - extract to MP3
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': output_template,
-                    'noplaylist': True,
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
-                    }],
-                    'quiet': True,
-                    'no_warnings': True,
-                }
-                extensions = ['mp3', 'm4a', 'webm', 'opus']
-            else:
-                # Video mode - download video with audio
-                ydl_opts = {
-                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                    'outtmpl': output_template,
-                    'noplaylist': True,
-                    'merge_output_format': 'mp4',
-                    'quiet': True,
-                    'no_warnings': True,
-                }
-                extensions = ['mp4', 'mkv', 'webm']
+        ydl_opts = {
+            "outtmpl": outtmpl,
+            "quiet": True,
+            "noplaylist": True,
+            "restrictfilenames": True,
+            "ignoreerrors": True,
+            "nocheckcertificate": True,
+            "concurrent_fragment_downloads": 4,
+            "overwrites": True,
+            "max_filesize": getattr(config, "MAX_FILE_SIZE", 50 * 1024 * 1024),
+        }
 
-            # Add cookies
-            if config.YOUTUBE_COOKIES_FROM_BROWSER:
-                ydl_opts['cookiesfrombrowser'] = (config.YOUTUBE_COOKIES_FROM_BROWSER,)
-            elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
-                ydl_opts['cookiefile'] = config.YOUTUBE_COOKIES_FILE
+        if audio_only:
+            ydl_opts.update({
+                "format": getattr(config, "AUDIO_QUALITY", "bestaudio[ext=m4a]/bestaudio"),
+                "postprocessors": [
+                    {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
+                ],
+            })
+        else:
+            ydl_opts.update({"format": "bv*+ba/b"})
 
+        if config.YOUTUBE_COOKIES_FROM_BROWSER:
+            ydl_opts["cookiesfrombrowser"] = (config.YOUTUBE_COOKIES_FROM_BROWSER,)
+        elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+            ydl_opts["cookiefile"] = config.YOUTUBE_COOKIES_FILE
+
+        def _download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+                info = ydl.extract_info(url, download=True)
+                if not info:
+                    return None
+                if "requested_downloads" in info and info["requested_downloads"]:
+                    return info["requested_downloads"][0]["filepath"]
+                if "ext" in info and "id" in info:
+                    return (self.download_path / f"{safe_prefix} - {info['id']}.{info['ext']}").as_posix()
+                return None
 
-            # Find downloaded file
-            for ext in extensions:
-                file_path = self.download_path / f"{title}.{ext}"
-                if file_path.exists():
-                    return str(file_path)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _download)
 
-            return None
-
-        except Exception as e:
-            logger.error(f"Error downloading media: {e}")
-            return None
+    # ---------------------------------------------------------------------
+    # Playback
+    # ---------------------------------------------------------------------
 
     async def play_stream(self, chat_id: int, query: str, requester_id: int, audio_only: bool = True) -> Dict:
         """Play media in voice chat (streaming mode) or download if streaming unavailable
@@ -228,17 +209,28 @@ class MusicManager:
 
             # STREAMING MODE - if py-tgcalls available
             if self.streaming_available and self.pytgcalls:
+                requested_mode = 'audio' if audio_only else 'video'
+                active_mode = self.stream_mode.get(chat_id)
+
+                if active_mode and active_mode != requested_mode:
+                    return {
+                        'success': False,
+                        'error': 'Different media type already playing. Use /stop before switching between audio and video.'
+                    }
+
+                song_entry = {**song_info, 'audio_only': audio_only}
+
                 # Check if already playing in this chat
                 if chat_id in self.active_calls and self.active_calls[chat_id]:
                     # Add to queue
                     if chat_id not in self.queues:
                         self.queues[chat_id] = []
-                    self.queues[chat_id].append(song_info)
+                    self.queues[chat_id].append(song_entry)
                     return {
                         'success': True,
                         'queued': True,
                         'position': len(self.queues[chat_id]),
-                        'song': song_info,
+                        'song': song_entry,
                         'streaming': True
                     }
 
@@ -257,11 +249,20 @@ class MusicManager:
                     ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
 
                     # Create MediaStream with YouTube URL
-                    media_stream = MediaStream(
-                        youtube_url,
-                        AudioQuality.HIGH,
-                        ytdlp_parameters=ytdlp_parameters
-                    )
+                    media_stream_kwargs = {
+                        'media_path': youtube_url,
+                        'audio_parameters': AudioQuality.HIGH,
+                        'ytdlp_parameters': ytdlp_parameters
+                    }
+
+                    if audio_only:
+                        media_stream_kwargs['video_parameters'] = None
+                        media_stream_kwargs['video_flags'] = MediaStream.Flags.IGNORE
+                    else:
+                        media_stream_kwargs['video_parameters'] = VideoQuality.HD_720p
+                        media_stream_kwargs['video_flags'] = MediaStream.Flags.AUTO_DETECT
+
+                    media_stream = MediaStream(**media_stream_kwargs)
 
                     # Build group call config
                     group_config = await self._build_group_call_config(chat_id)
@@ -274,13 +275,14 @@ class MusicManager:
                     )
 
                     self.active_calls[chat_id] = True
-                    self.current_song[chat_id] = song_info
+                    self.current_song[chat_id] = {**song_entry}
+                    self.stream_mode[chat_id] = requested_mode
 
                     logger.info(f"Started streaming in chat {chat_id}: {song_info['title']}")
 
                     return {
                         'success': True,
-                        'song': song_info,
+                        'song': song_entry,
                         'streaming': True,
                         'joined_vc': True
                     }
@@ -293,14 +295,16 @@ class MusicManager:
             # DOWNLOAD MODE - fallback if streaming not available
             logger.info("Using download mode (streaming not available)")
 
+            song_entry = {**song_info, 'audio_only': audio_only}
+
             # Check if queue exists
             if chat_id in self.queues and len(self.queues[chat_id]) > 0:
-                self.queues[chat_id].append(song_info)
+                self.queues[chat_id].append(song_entry)
                 return {
                     'success': True,
                     'queued': True,
                     'position': len(self.queues[chat_id]),
-                    'song': song_info,
+                    'song': song_entry,
                     'streaming': False
                 }
 
@@ -311,14 +315,12 @@ class MusicManager:
                 media_type = "audio" if audio_only else "video"
                 return {'success': False, 'error': f'Failed to download {media_type}'}
 
-            self.current_song[chat_id] = {
-                **song_info,
-                'file_path': file_path
-            }
+            download_entry = {**song_entry, 'file_path': file_path}
+            self.current_song[chat_id] = download_entry
 
             return {
                 'success': True,
-                'song': song_info,
+                'song': download_entry,
                 'file_path': file_path,
                 'streaming': False
             }
@@ -339,6 +341,7 @@ class MusicManager:
                 self.queues[chat_id].clear()
             if chat_id in self.current_song:
                 del self.current_song[chat_id]
+            self.stream_mode.pop(chat_id, None)
 
             return True
         except Exception as e:
@@ -370,6 +373,7 @@ class MusicManager:
             if self.pytgcalls and chat_id in self.active_calls:
                 await self.pytgcalls.leave_call(chat_id)
                 self.active_calls.pop(chat_id, None)
+                self.stream_mode.pop(chat_id, None)
                 logger.info(f"Left voice chat in {chat_id}")
                 return True
             return False
@@ -396,54 +400,19 @@ class MusicManager:
             return GroupCallConfig()
 
     async def _get_join_as_entity(self):
-        """Resolve VOICE_CHAT_JOIN_AS setting to an entity once"""
+        """Resolve join_as entity once and cache it."""
         if self._join_as_resolved:
             return self._join_as_cache
-
         self._join_as_resolved = True
-        join_as = getattr(config, 'VOICE_CHAT_JOIN_AS', None)
-
-        if join_as in (None, ''):
-            self._join_as_cache = None
-            return None
-
         try:
-            if isinstance(join_as, str) and join_as.lower() in {'me', 'self'}:
-                entity = await self.assistant_client.get_me()
+            join_as = getattr(config, "VOICE_CHAT_JOIN_AS", None)
+            if not join_as:
+                self._join_as_cache = None
             else:
-                entity = await self.assistant_client.get_entity(join_as)
-            self._join_as_cache = entity
-        except Exception as exc:
-            logger.warning(f"Failed to resolve VOICE_CHAT_JOIN_AS='{join_as}': {exc}")
+                self._join_as_cache = join_as
+        except Exception:
             self._join_as_cache = None
-
         return self._join_as_cache
-
-    async def pause_stream(self, chat_id: int) -> bool:
-        """Pause current stream"""
-        try:
-            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
-                await self.pytgcalls.pause_stream(chat_id)
-                logger.info(f"Paused stream in {chat_id}")
-                return True
-        except Exception as e:
-            logger.error(f"Error pausing: {e}")
-        return False
-
-    async def resume_stream(self, chat_id: int) -> bool:
-        """Resume paused stream"""
-        try:
-            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
-                await self.pytgcalls.resume_stream(chat_id)
-                logger.info(f"Resumed stream in {chat_id}")
-                return True
-        except Exception as e:
-            logger.error(f"Error resuming: {e}")
-        return False
-
-    def get_current_song(self, chat_id: int) -> Optional[Dict]:
-        """Get current song"""
-        return self.current_song.get(chat_id)
 
     def get_queue(self, chat_id: int) -> List[Dict]:
         """Get queue"""
@@ -469,6 +438,7 @@ class MusicManager:
 
             # Get next song
             next_song = self.queues[chat_id].pop(0)
+            audio_only = next_song.get('audio_only', True)
 
             # Stop current song
             if self.streaming_available and chat_id in self.active_calls:
@@ -488,17 +458,27 @@ class MusicManager:
 
                 ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
 
-                media_stream = MediaStream(
-                    youtube_url,
-                    AudioQuality.HIGH,
-                    ytdlp_parameters=ytdlp_parameters
-                )
+                media_stream_kwargs = {
+                    'media_path': youtube_url,
+                    'audio_parameters': AudioQuality.HIGH,
+                    'ytdlp_parameters': ytdlp_parameters
+                }
+
+                if audio_only:
+                    media_stream_kwargs['video_parameters'] = None
+                    media_stream_kwargs['video_flags'] = MediaStream.Flags.IGNORE
+                else:
+                    media_stream_kwargs['video_parameters'] = VideoQuality.HD_720p
+                    media_stream_kwargs['video_flags'] = MediaStream.Flags.AUTO_DETECT
+
+                media_stream = MediaStream(**media_stream_kwargs)
 
                 group_config = await self._build_group_call_config(chat_id)
                 await self.pytgcalls.play(chat_id, media_stream, config=group_config)
 
                 self.active_calls[chat_id] = True
                 self.current_song[chat_id] = next_song
+                self.stream_mode[chat_id] = 'audio' if audio_only else 'video'
 
                 return {
                     'success': True,
@@ -524,57 +504,3 @@ class MusicManager:
         except Exception as e:
             logger.error(f"Error shuffling queue: {e}")
             return False
-
-    async def set_loop_mode(self, chat_id: int, mode: str) -> bool:
-        """Set loop mode: 'off', 'current', 'all'"""
-        try:
-            if mode not in ['off', 'current', 'all']:
-                return False
-
-            self.loop_mode[chat_id] = mode
-            logger.info(f"Set loop mode to {mode} in {chat_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Error setting loop mode: {e}")
-            return False
-
-    def get_loop_mode(self, chat_id: int) -> str:
-        """Get current loop mode"""
-        return self.loop_mode.get(chat_id, 'off')
-
-    async def seek_position(self, chat_id: int, seconds: int) -> bool:
-        """Seek to position in current song (streaming mode only)"""
-        try:
-            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
-                # Note: py-tgcalls may not support seek, this is a placeholder
-                # Implementation depends on py-tgcalls version
-                logger.info(f"Seek to {seconds}s in {chat_id}")
-                # await self.pytgcalls.seek_stream(chat_id, seconds)
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Error seeking: {e}")
-            return False
-
-    async def set_volume(self, chat_id: int, volume: int) -> bool:
-        """Set volume (0-200)"""
-        try:
-            if volume < 0 or volume > 200:
-                return False
-
-            self.volume[chat_id] = volume
-
-            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
-                # Set volume in voice chat
-                await self.pytgcalls.change_volume(chat_id, volume)
-                logger.info(f"Set volume to {volume} in {chat_id}")
-                return True
-
-            return True  # Store volume even if not streaming
-        except Exception as e:
-            logger.error(f"Error setting volume: {e}")
-            return False
-
-    def get_volume(self, chat_id: int) -> int:
-        """Get current volume"""
-        return self.volume.get(chat_id, 100)
