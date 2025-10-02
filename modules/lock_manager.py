@@ -7,20 +7,28 @@ Author: Vzoel Fox's
 Version: 2.0.0 Python (Database-backed)
 """
 
-import asyncio
 import logging
-import time
-from typing import Dict, List, Optional
-from telethon.tl.types import MessageEntityMentionName
-import config
+from collections import defaultdict
+from typing import Dict, Optional
+
+from telethon.errors import (
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
+)
+from telethon.tl.types import (
+    MessageEntityMention,
+    MessageEntityMentionName,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class LockManager:
     """Manages user locking and auto-deletion (Database-backed)"""
 
     def __init__(self, database=None):
         self.database = database
+        self.lock_reasons: Dict[int, Dict[int, str]] = defaultdict(dict)
         logger.info("LockManager initialized with Database backend")
 
     async def lock_user(self, chat_id: int, user_id: int, reason: str = "Locked by admin") -> bool:
@@ -31,6 +39,7 @@ class LockManager:
                 return False
 
             self.database.lock_user(chat_id, user_id)
+            self.lock_reasons[chat_id][user_id] = reason
             logger.info(f"Locked user {user_id} in chat {chat_id}: {reason}")
             return True
 
@@ -46,6 +55,8 @@ class LockManager:
                 return False
 
             self.database.unlock_user(chat_id, user_id)
+            if chat_id in self.lock_reasons and user_id in self.lock_reasons[chat_id]:
+                self.lock_reasons[chat_id].pop(user_id, None)
             logger.info(f"Unlocked user {user_id} in chat {chat_id}")
             return True
 
@@ -71,9 +82,11 @@ class LockManager:
 
                 # Log the deletion
                 username = getattr(message.sender, 'username', 'Unknown')
-                reason = self.lock_reasons.get(chat_id, {}).get(user_id, 'Unknown')
+                reason = self.lock_reasons.get(chat_id, {}).get(user_id, 'Locked by admin')
 
-                logger.info(f"Deleted message from locked user {user_id} (@{username}) in chat {chat_id}. Reason: {reason}")
+                logger.info(
+                    f"Deleted message from locked user {user_id} (@{username}) in chat {chat_id}. Reason: {reason}"
+                )
                 return True
 
             return False
@@ -82,10 +95,10 @@ class LockManager:
             logger.error(f"Error processing message for locked users: {e}")
             return False
 
-    async def parse_lock_command(self, message_text: str) -> Optional[int]:
+    async def parse_lock_command(self, client, message) -> Optional[int]:
         """Parse /lock command to extract user ID"""
         try:
-            parts = message_text.split()
+            parts = message.text.split()
             if len(parts) < 2:
                 return None
 
@@ -93,10 +106,12 @@ class LockManager:
 
             # Handle @username
             if target.startswith('@'):
-                username = target[1:]  # Remove @
-                # Note: In real implementation, you'd need to resolve username to user_id
-                # This would require a database or API call to get user_id from username
-                return None  # Placeholder
+                try:
+                    entity = await client.get_entity(target)
+                    return getattr(entity, 'id', None)
+                except (ValueError, UsernameInvalidError, UsernameNotOccupiedError) as e:
+                    logger.warning(f"Failed to resolve username {target}: {e}")
+                    return None
 
             # Handle user ID directly
             if target.isdigit():
@@ -122,13 +137,20 @@ class LockManager:
             logger.error(f"Error extracting user from reply: {e}")
             return None
 
-    async def extract_user_from_mention(self, message) -> Optional[int]:
+    async def extract_user_from_mention(self, client, message) -> Optional[int]:
         """Extract user ID from mention in message"""
         try:
             if hasattr(message, 'entities') and message.entities:
                 for entity in message.entities:
                     if isinstance(entity, MessageEntityMentionName):
                         return entity.user_id
+                    if isinstance(entity, MessageEntityMention):
+                        mention_text = message.text[entity.offset:entity.offset + entity.length]
+                        try:
+                            entity_user = await client.get_entity(mention_text)
+                            return getattr(entity_user, 'id', None)
+                        except (ValueError, UsernameInvalidError, UsernameNotOccupiedError) as e:
+                            logger.warning(f"Failed to resolve mention {mention_text}: {e}")
 
             return None
 
@@ -142,7 +164,8 @@ class LockManager:
             return {}
 
         locked_ids = self.database.get_locked_users(chat_id)
-        return {user_id: {'reason': 'Locked by admin'} for user_id in locked_ids}
+        return {user_id: {'reason': self.lock_reasons.get(chat_id, {}).get(user_id, 'Locked by admin')}
+                for user_id in locked_ids}
 
     def get_lock_stats(self) -> Dict:
         """Get lock system statistics"""
