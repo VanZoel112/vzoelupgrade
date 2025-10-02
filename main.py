@@ -986,46 +986,31 @@ Contact: @VZLfxs
         await message.reply(about_text)
 
     async def _handle_help_command(self, message):
-        """Handle #help command"""
-        help_text = """
-**VBot Command Reference**
+        """Handle /help command with inline navigation"""
+        # Main help menu with category buttons
+        help_text = (
+            "**VBot Command Center**\n\n"
+            "Select a category to view available commands:"
+        )
 
-**Owner Commands** (+ prefix)
-+add <user> - Grant admin command access
-+del <user> - Revoke admin command access
-+setwelcome <text> - Configure welcome message
-+backup - Create database backup
+        buttons = [
+            [
+                Button.inline("🎵 Music", data="help_music"),
+                Button.inline("👥 Admin", data="help_admin")
+            ],
+            [
+                Button.inline("⚙️ Owner", data="help_owner"),
+                Button.inline("ℹ️ Info", data="help_info")
+            ],
+            [
+                Button.inline("VBot by Vzoel Fox's", data="vbot_info")
+            ]
+        ]
 
-**Admin Commands** (/ prefix)
-/pm <user> - Promote to admin list
-/dm <user> - Demote from admin list
-/tagall <text> - Tag all members
-/cancel - Stop ongoing tag operation
-/lock <user> - Enable auto-delete for user
-/unlock <user> - Disable auto-delete
-/locklist - View locked users
-
-**Public Commands** (. prefix)
-.play <query> - Stream or download music
-.pause - Pause current playback
-.resume - Resume playback
-.stop - Stop and clear queue
-.queue - View music queue
-
-**Information**
-/start - System overview
-/about - Technical details
-/help - This command reference
-
-**Permission Structure**
-+ Commands require owner authorization
-/ Commands require admin or granted access
-. Commands available to all users
-
-System developed by Vzoel Fox
-Contact: @VZLfxs
-"""
-        await message.reply(help_text)
+        await message.reply(
+            VBotBranding.wrap_message(help_text),
+            buttons=buttons
+        )
 
     async def _handle_stats_command(self, message):
         """Handle .stats command"""
@@ -1568,6 +1553,112 @@ Contact: @VZLfxs
                             response += f"\n... and {len(queue) - 5} more"
 
                     await event.answer(response, alert=True)
+
+            elif data.startswith('help_'):
+                # Help category navigation
+                category = data.split('_')[1]
+
+                if category == 'music':
+                    help_content = (
+                        "**🎵 Music Commands**\n\n"
+                        "**Playback:**\n"
+                        "/play <query/url> - Play audio from YouTube/Spotify\n"
+                        "/vplay <query/url> - Play video\n"
+                        "/pause - Pause playback\n"
+                        "/resume - Resume playback\n"
+                        "/skip - Skip to next song\n"
+                        "/stop - Stop and clear queue\n\n"
+                        "**Queue Management:**\n"
+                        "/queue - View current queue\n"
+                        "/shuffle - Shuffle queue\n"
+                        "/loop <mode> - Set loop (off/current/all)\n\n"
+                        "**Advanced:**\n"
+                        "/seek <time> - Jump to timestamp\n"
+                        "/volume <0-200> - Adjust volume\n\n"
+                        "**Voice Chat:**\n"
+                        ".join - Join voice chat\n"
+                        ".leave - Leave voice chat"
+                    )
+
+                elif category == 'admin':
+                    help_content = (
+                        "**👥 Admin Commands**\n\n"
+                        "**User Management:**\n"
+                        "/pm <user> - Promote user to admin\n"
+                        "/dm <user> - Demote user from admin\n\n"
+                        "**Moderation:**\n"
+                        "/lock <user> - Lock user (auto-delete)\n"
+                        "/unlock <user> - Unlock user\n"
+                        "/locklist - View locked users\n\n"
+                        "**Group Tools:**\n"
+                        "/tagall <text> - Tag all members\n"
+                        "/cancel - Cancel tag operation"
+                    )
+
+                elif category == 'owner':
+                    help_content = (
+                        "**⚙️ Owner Commands**\n\n"
+                        "**Permission Management:**\n"
+                        "+add <user> - Grant admin access\n"
+                        "+del <user> - Revoke admin access\n\n"
+                        "**System:**\n"
+                        "+setwelcome <text> - Set welcome message\n"
+                        "+backup - Create database backup\n\n"
+                        "**Note:** Owner commands require\n"
+                        "OWNER_ID authorization"
+                    )
+
+                elif category == 'info':
+                    help_content = (
+                        "**ℹ️ Information**\n\n"
+                        "**General:**\n"
+                        "/start - System overview\n"
+                        "/about - Technical details\n"
+                        "/help - This help menu\n\n"
+                        "**Permission Levels:**\n"
+                        "+ Owner only (system management)\n"
+                        "/ Admin + authorized users\n"
+                        ". Public (all users)\n\n"
+                        "**Developer:**\n"
+                        "Vzoel Fox's\n"
+                        "Contact: @VZLfxs"
+                    )
+                else:
+                    help_content = "Unknown category"
+
+                # Back button
+                back_button = [[Button.inline("« Back to Menu", data="help_main")]]
+
+                await event.edit(
+                    VBotBranding.wrap_message(help_content),
+                    buttons=back_button
+                )
+
+            elif data == 'help_main':
+                # Return to main help menu
+                help_text = (
+                    "**VBot Command Center**\n\n"
+                    "Select a category to view available commands:"
+                )
+
+                buttons = [
+                    [
+                        Button.inline("🎵 Music", data="help_music"),
+                        Button.inline("👥 Admin", data="help_admin")
+                    ],
+                    [
+                        Button.inline("⚙️ Owner", data="help_owner"),
+                        Button.inline("ℹ️ Info", data="help_info")
+                    ],
+                    [
+                        Button.inline("VBot by Vzoel Fox's", data="vbot_info")
+                    ]
+                ]
+
+                await event.edit(
+                    VBotBranding.wrap_message(help_text),
+                    buttons=buttons
+                )
 
             elif data == 'vbot_info':
                 await event.answer(
