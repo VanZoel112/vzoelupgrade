@@ -70,6 +70,8 @@ DEVELOPER_IDS = _developer_ids_from_env
 # Admin chat IDs (can use / prefix commands)
 ADMIN_CHAT_IDS = _parse_int_list(os.getenv("ADMIN_CHAT_IDS"))
 
+# Log group/chat ID (for bot logs and error tracking)
+LOG_CHAT_ID = int(os.getenv("LOG_CHAT_ID", "0"))
 
 # ==============================================
 # MUSIC SYSTEM SETTINGS
