@@ -231,6 +231,11 @@ class VBot:
             command_parts = command_text.split()
             command = command_parts[0]
 
+            # Strip @botname from command (e.g., /start@vmusic_vbot -> /start)
+            if '@' in command:
+                command = command.split('@')[0]
+                command_parts[0] = command
+
             # Check permissions
             has_permission = await self.auth_manager.check_permissions(
                 self.client, message.sender_id, message.chat_id, command_text
@@ -373,6 +378,7 @@ class VBot:
 
         except Exception as e:
             logger.error(f"Error routing command {command}: {e}")
+            await message.reply(VBotBranding.format_error(f"Command error: {str(e)}"))
 
     async def _handle_music_command(self, message, parts, audio_only=True):
         """Handle music download/stream commands"""
@@ -479,26 +485,49 @@ class VBot:
                     )
                 else:
                     # Download mode - send file
-                    await VBotBranding.animate_loading(status_msg, "Uploading audio", 1.0)
+                    media_type = "audio" if audio_only else "video"
+                    await VBotBranding.animate_loading(status_msg, f"Uploading {media_type}", 1.0)
 
                     file_path = result.get('file_path')
                     if file_path:
-                        await self.client.send_file(
-                            message.chat_id,
-                            file_path,
-                            caption=f"🎵 **{song['title']}**\n⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}",
-                            reply_to=message.id,
-                            attributes=[
+                        # Prepare attributes based on media type
+                        if audio_only:
+                            # Send as audio/music file
+                            attributes = [
                                 types.DocumentAttributeAudio(
                                     duration=song.get('duration', 0),
                                     title=song['title'],
-                                    performer='VBot Music'
+                                    performer='VBot Music',
+                                    voice=False  # Music, not voice message
                                 )
                             ]
+                        else:
+                            # Send as video file
+                            attributes = [
+                                types.DocumentAttributeVideo(
+                                    duration=song.get('duration', 0),
+                                    w=640,
+                                    h=360,
+                                    supports_streaming=True
+                                )
+                            ]
+
+                        caption_content = (
+                            f"**{song['title']}**\n"
+                            f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}"
+                        )
+
+                        await self.client.send_file(
+                            message.chat_id,
+                            file_path,
+                            caption=VBotBranding.wrap_message(caption_content),
+                            reply_to=message.id,
+                            attributes=attributes,
+                            voice_note=False  # Never send as voice note
                         )
                         await status_msg.delete()
                     else:
-                        await status_msg.edit("❌ Failed to download audio file")
+                        await status_msg.edit(VBotBranding.format_error(f"Failed to download {media_type} file"))
             else:
                 await status_msg.edit(f"❌ Error: {result.get('error', 'Unknown error')}")
 

@@ -24,14 +24,15 @@ class Database:
     def __init__(self, db_path: str = "data/database.json", enable_auto_backup: bool = True):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(exist_ok=True)
-        self.data = self._load()
-        self._ensure_structure()
 
-        # Auto-backup settings
+        # Auto-backup settings (must be set before _ensure_structure)
         self.enable_auto_backup = enable_auto_backup
         self.backup_task = None
         self.backup_pending = False
         self.last_backup = None
+
+        self.data = self._load()
+        self._ensure_structure()
 
     def _load(self) -> Dict:
         """Load database from file"""

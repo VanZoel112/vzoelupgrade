@@ -95,7 +95,13 @@ class SQLiteLogHandler(logging.Handler):
         super().__init__(level)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        asyncio.create_task(self._init_db())
+        self._db_initialized = False
+        # Will be initialized on first use
+        try:
+            asyncio.create_task(self._init_db())
+        except RuntimeError:
+            # No event loop running yet, will init on first log
+            pass
 
     async def _init_db(self):
         """Initialize database table"""
@@ -127,6 +133,7 @@ class SQLiteLogHandler(logging.Handler):
                 """)
 
                 await db.commit()
+            self._db_initialized = True
         except Exception as e:
             print(f"Failed to init log database: {e}")
 
@@ -158,6 +165,10 @@ class SQLiteLogHandler(logging.Handler):
     async def _save_to_db(self, log_data: Dict):
         """Async save to database"""
         try:
+            # Ensure DB initialized
+            if not self._db_initialized:
+                await self._init_db()
+
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute("""
                     INSERT INTO logs
