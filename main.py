@@ -28,6 +28,7 @@ from telethon.tl.types import MessageEntityMentionName
 
 # Import VBot modules
 from core import AuthManager, EmojiManager, MusicManager, Database
+from core.branding import VBotBranding
 from modules import LockManager, TagManager, WelcomeManager, GitHubSync, PrivacyManager
 
 class VBot:
@@ -396,9 +397,12 @@ class VBot:
 
             query = ' '.join(parts[1:])
 
-            # Show processing message
+            # Show animated processing message
             media_type = "audio" if audio_only else "video"
-            status_msg = await message.reply(f"**Processing {media_type} request...**")
+            status_msg = await message.reply(f"⠋ **Processing {media_type} request...**")
+
+            # Animate loading
+            await VBotBranding.animate_loading(status_msg, f"Searching {media_type}", 1.5)
 
             # Play stream
             result = await self.music_manager.play_stream(
@@ -434,10 +438,15 @@ class VBot:
                         ]
                     ]
 
-                    await status_msg.edit(
-                        f"{mode} **#{result['position']}**\n\n"
+                    content = (
+                        f"**{mode}**\n"
+                        f"Position: **#{result['position']}**\n\n"
                         f"**{song['title']}**\n"
-                        f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}",
+                        f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}"
+                    )
+
+                    await status_msg.edit(
+                        VBotBranding.wrap_message(content),
                         buttons=buttons
                     )
                 elif result.get('streaming'):
@@ -465,15 +474,12 @@ class VBot:
                     ]
 
                     await status_msg.edit(
-                        f"**Now Streaming in Voice Chat**\n\n"
-                        f"**{song['title']}**\n"
-                        f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n\n"
-                        f"Use the buttons below to control playback",
+                        VBotBranding.format_music_info(song, "Now Streaming"),
                         buttons=buttons
                     )
                 else:
                     # Download mode - send file
-                    await status_msg.edit("⬆️ Uploading audio...")
+                    await VBotBranding.animate_loading(status_msg, "Uploading audio", 1.0)
 
                     file_path = result.get('file_path')
                     if file_path:
@@ -568,28 +574,15 @@ class VBot:
             queue = self.music_manager.get_queue(message.chat_id)
 
             if not current and not queue:
-                await message.reply("**Queue Status**\n\nQueue is empty\n\nUse .play to add songs")
+                content = "**Queue Status**\n\nQueue is empty\n\nUse /play to add songs"
+                await message.reply(VBotBranding.wrap_message(content, include_footer=False))
                 return
 
-            response = "**Music Queue**\n\n"
-
-            if current:
-                response += f"**Now Playing**\n{current['title']}\n\n"
-
-            if queue:
-                response += "**Up Next**\n"
-                for i, song in enumerate(queue[:10], 1):
-                    response += f"{i}. {song['title']}\n"
-
-                if len(queue) > 10:
-                    response += f"\n... and {len(queue) - 10} more"
-            else:
-                response += "No songs in queue"
-
-            await message.reply(response)
+            formatted_queue = VBotBranding.format_queue_info(current, queue)
+            await message.reply(formatted_queue)
 
         except Exception as e:
-            await message.reply(f"Error getting queue: {str(e)}")
+            await message.reply(VBotBranding.format_error(f"Getting queue: {str(e)}"))
 
     async def _handle_join_vc_command(self, message):
         """Handle .join command - join voice chat"""
@@ -648,7 +641,9 @@ class VBot:
             return
 
         try:
-            status_msg = await message.reply("**Skipping to next song...**")
+            status_msg = await message.reply("⠋ **Skipping...**")
+            await VBotBranding.animate_loading(status_msg, "Skipping to next song", 1.0)
+
             result = await self.music_manager.skip_song(message.chat_id)
 
             if result['success']:
@@ -667,18 +662,22 @@ class VBot:
                     ]
                 ]
 
-                await status_msg.edit(
+                content = (
                     f"**Now Playing**\n\n"
                     f"**{song['title']}**\n"
                     f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n"
-                    f"Remaining in queue: {result['remaining']}",
+                    f"Remaining: {result['remaining']}"
+                )
+
+                await status_msg.edit(
+                    VBotBranding.wrap_message(content),
                     buttons=buttons
                 )
             else:
-                await status_msg.edit(f"**Error:** {result.get('error', 'Unable to skip')}")
+                await status_msg.edit(VBotBranding.format_error(result.get('error', 'Unable to skip')))
 
         except Exception as e:
-            await message.reply(f"Error: {str(e)}")
+            await message.reply(VBotBranding.format_error(str(e)))
 
     async def _handle_shuffle_command(self, message):
         """Handle /shuffle command"""
@@ -690,12 +689,12 @@ class VBot:
             success = await self.music_manager.shuffle_queue(message.chat_id)
 
             if success:
-                await message.reply("**Queue shuffled successfully**")
+                await message.reply(VBotBranding.format_success("Queue shuffled successfully"))
             else:
-                await message.reply("**Error:** Queue is empty or shuffle failed")
+                await message.reply(VBotBranding.format_error("Queue is empty or shuffle failed"))
 
         except Exception as e:
-            await message.reply(f"Error: {str(e)}")
+            await message.reply(VBotBranding.format_error(str(e)))
 
     async def _handle_loop_command(self, message, parts):
         """Handle /loop command"""
@@ -706,23 +705,24 @@ class VBot:
         try:
             if len(parts) < 2:
                 current_mode = self.music_manager.get_loop_mode(message.chat_id)
-                await message.reply(
+                content = (
                     f"**Current loop mode:** {current_mode}\n\n"
                     f"**Usage:** /loop <mode>\n"
                     f"**Modes:** off, current, all"
                 )
+                await message.reply(VBotBranding.wrap_message(content, include_footer=False))
                 return
 
             mode = parts[1].lower()
             success = await self.music_manager.set_loop_mode(message.chat_id, mode)
 
             if success:
-                await message.reply(f"**Loop mode set to:** {mode}")
+                await message.reply(VBotBranding.format_success(f"Loop mode set to: {mode}"))
             else:
-                await message.reply("**Error:** Invalid mode. Use: off, current, all")
+                await message.reply(VBotBranding.format_error("Invalid mode. Use: off, current, all"))
 
         except Exception as e:
-            await message.reply(f"Error: {str(e)}")
+            await message.reply(VBotBranding.format_error(str(e)))
 
     async def _handle_seek_command(self, message, parts):
         """Handle /seek command"""
@@ -769,27 +769,28 @@ class VBot:
         try:
             if len(parts) < 2:
                 current_volume = self.music_manager.get_volume(message.chat_id)
-                await message.reply(
+                content = (
                     f"**Current volume:** {current_volume}\n\n"
                     f"**Usage:** /volume <0-200>\n\n"
                     f"**Examples:**\n"
                     f"/volume 100 (default)\n"
                     f"/volume 150 (louder)"
                 )
+                await message.reply(VBotBranding.wrap_message(content, include_footer=False))
                 return
 
             volume = int(parts[1])
             success = await self.music_manager.set_volume(message.chat_id, volume)
 
             if success:
-                await message.reply(f"**Volume set to:** {volume}")
+                await message.reply(VBotBranding.format_success(f"Volume set to: {volume}"))
             else:
-                await message.reply("**Error:** Volume must be 0-200")
+                await message.reply(VBotBranding.format_error("Volume must be 0-200"))
 
         except ValueError:
-            await message.reply("**Error:** Volume must be a number")
+            await message.reply(VBotBranding.format_error("Volume must be a number"))
         except Exception as e:
-            await message.reply(f"Error: {str(e)}")
+            await message.reply(VBotBranding.format_error(str(e)))
 
     async def _handle_lock_command(self, message, parts):
         """Handle /lock command"""
