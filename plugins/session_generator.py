@@ -34,7 +34,7 @@ class SessionGenerator:
         if event.is_group or event.is_channel:
             await event.reply(
                 "❌ **Session generator hanya bisa digunakan di Private Chat!**\n\n"
-                "Ketik `.gensession` di chat pribadi bot untuk keamanan."
+                "Click button di /start atau ketik /gensession di chat pribadi bot."
             )
             return
 
@@ -54,8 +54,10 @@ class SessionGenerator:
             'data': {}
         }
 
-        await event.reply(
-            "🔐 **Session String Generator**\n\n"
+        from core.branding import VBotBranding
+
+        content = (
+            "**Session String Generator**\n\n"
             "Generator ini akan membantu kamu membuat session string untuk Assistant Account.\n\n"
             "**CATATAN PENTING:**\n"
             "• Gunakan nomor HP yang BERBEDA dari owner\n"
@@ -65,6 +67,8 @@ class SessionGenerator:
             "(Dapatkan dari https://my.telegram.org)\n\n"
             "Ketik /cancel untuk membatalkan."
         )
+
+        await event.reply(VBotBranding.wrap_message(content, include_footer=False))
 
     async def handle_message(self, event):
         """Handle user messages during generation"""
@@ -285,14 +289,17 @@ def setup(bot_client):
     """Setup session generator handlers"""
     generator = SessionGenerator(bot_client)
 
-    @bot_client.on(events.NewMessage(pattern=r'^\.gensession$'))
+    @bot_client.on(events.NewMessage(pattern=r'^/gensession$'))
     async def handle_gensession(event):
-        """Handle .gensession command"""
+        """Handle /gensession command"""
         await generator.start_generation(event)
 
     @bot_client.on(events.NewMessage(func=lambda e: e.sender_id in generation_state and e.is_private))
     async def handle_generation_message(event):
         """Handle messages during generation"""
         await generator.handle_message(event)
+
+    # Export generator for callback use
+    bot_client.session_generator = generator
 
     logger.info("✅ Session Generator plugin loaded")

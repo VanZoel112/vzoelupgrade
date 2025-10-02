@@ -116,12 +116,25 @@ class VBot:
             # Setup bot commands (slash suggestions)
             await self._setup_bot_commands()
 
+            # Load plugins
+            self._load_plugins()
+
             logger.info("✅ All systems initialized")
             return True
 
         except Exception as e:
             logger.error(f"❌ Failed to initialize VBot: {e}")
             return False
+
+    def _load_plugins(self):
+        """Load VBot plugins"""
+        try:
+            # Load session generator plugin
+            from plugins import session_generator
+            session_generator.setup(self.client)
+            logger.info("✅ Plugins loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading plugins: {e}")
 
     def _setup_event_handlers(self):
         """Setup all event handlers"""
@@ -931,31 +944,44 @@ class VBot:
     async def _handle_start_command(self, message):
         """Handle /start command"""
         user = await message.get_sender()
-        welcome_text = f"""
-**Welcome, {user.first_name}**
 
-VBot - Advanced Telegram Management System
-Powered by Vzoel Fox's
+        content = (
+            f"**Welcome, {user.first_name}!**\n\n"
+            "**VBot Music System**\n"
+            "Advanced Telegram Bot untuk Music Streaming & Group Management\n\n"
+            "**Core Features:**\n"
+            "• Music streaming & playback control\n"
+            "• Voice chat integration\n"
+            "• Advanced user management\n"
+            "• Smart moderation tools\n"
+            "• Welcome automation\n"
+            "• Multi-level permissions\n\n"
+            "**Quick Start:**\n"
+            "Click buttons below untuk explore fitur bot!"
+        )
 
-**Core Features**
-• Music streaming and playback control
-• Advanced user management system
-• Smart tagging and moderation tools
-• Customizable welcome automation
-• Multi-level permission architecture
+        # Create inline buttons
+        buttons = []
 
-**Quick Start**
-/help - View all available commands
-/about - System information
+        # Add to group button (always show)
+        bot_username = (await self.client.get_me()).username
+        add_url = f"https://t.me/{bot_username}?startgroup=true"
+        buttons.append([Button.url("Add to Group", add_url)])
 
-**Permission Levels**
-+ Owner commands (system management)
-/ Admin commands (group moderation)
-. Public commands (all users)
+        # Get Session button (only in private chat)
+        if message.is_private:
+            buttons.append([Button.inline("Get Session", data="get_session")])
 
-Contact: @VZLfxs
-"""
-        await message.reply(welcome_text)
+        # Help button
+        buttons.append([Button.inline("Help & Commands", data="help_main")])
+
+        # VBot branding
+        buttons.append([Button.inline("VBot by Vzoel Fox's", data="vbot_info")])
+
+        await message.reply(
+            VBotBranding.wrap_message(content),
+            buttons=buttons
+        )
 
     async def _handle_about_command(self, message):
         """Handle /about command"""
@@ -1659,6 +1685,21 @@ Contact: @VZLfxs
                     VBotBranding.wrap_message(help_text),
                     buttons=buttons
                 )
+
+            elif data == 'get_session':
+                # Get session button - start session generation
+                if hasattr(self.client, 'session_generator'):
+                    # Trigger session generator in private chat
+                    if event.is_private:
+                        await event.answer("Starting session generator...")
+                        await self.client.session_generator.start_generation(event)
+                    else:
+                        await event.answer(
+                            "Session generator hanya bisa digunakan di Private Chat!\n\nKlik /start di chat pribadi bot.",
+                            alert=True
+                        )
+                else:
+                    await event.answer("Session generator tidak tersedia", alert=True)
 
             elif data == 'vbot_info':
                 await event.answer(
