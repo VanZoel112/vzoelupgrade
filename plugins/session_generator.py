@@ -6,7 +6,7 @@ Generate Telethon session string langsung dari bot
 Commands:
     .gensession - Generate session string (private chat only)
 
-Author: VanZoel112
+Author: Vzoel Fox's
 """
 
 import asyncio

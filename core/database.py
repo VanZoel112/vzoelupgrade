@@ -3,7 +3,7 @@
 Database Manager - JSON-based database with auto-backup
 Stores all bot data including permissions, settings, locks, etc.
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.0.0
 """
 

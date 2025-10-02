@@ -3,7 +3,7 @@
 GitHub Sync Manager
 Auto push data ke GitHub repository
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.0.0 Python
 """
 

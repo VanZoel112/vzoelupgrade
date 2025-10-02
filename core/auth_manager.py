@@ -6,7 +6,7 @@ Authentication and Authorization Manager
 - / prefix: Admin + Authorized users (group commands)
 - . prefix: All users (public commands)
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.1.0 Python
 """
 

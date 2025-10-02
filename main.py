@@ -3,7 +3,7 @@
 VBot Python - Main Application
 Vzoel Robot Music Bot with comprehensive features
 
-Author: VanZoel112 (Converted from Node.js)
+Author: Vzoel Fox's
 Version: 2.0.0 Python
 """
 
@@ -1541,7 +1541,7 @@ Contact: @VZLfxs
 
             elif data == 'vbot_info':
                 await event.answer(
-                    "VBot Music System\nDeveloped by Vzoel Fox's\n\nGithub: github.com/VanZoel112",
+                    "VBot Music System\nDeveloped by Vzoel Fox's",
                     alert=True
                 )
 

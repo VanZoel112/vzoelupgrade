@@ -3,7 +3,7 @@
 Privacy Manager
 Silent command execution untuk private commands
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.0.0 Python
 """
 

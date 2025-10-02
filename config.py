@@ -3,7 +3,7 @@
 VBot Python Configuration
 Simple and straightforward - just edit the values below!
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.0.0 Python
 """
 
@@ -23,11 +23,11 @@ API_HASH = "717957f0e3ae20a7db004d08b66bfd30"
 # ==============================================
 
 # Your Telegram User ID (owner)
-OWNER_ID = 8024282347  # VanZoel112
+OWNER_ID = 8024282347
 
 # Developer IDs (can use . prefix commands)
 DEVELOPER_IDS = [
-    8024282347,  # VanZoel112
+    8024282347,
 ]
 
 # Admin chat IDs (can use / prefix commands)

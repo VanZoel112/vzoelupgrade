@@ -3,7 +3,7 @@
 Tag System Manager
 Progressive tag all members dengan message editing
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.0.0 Python
 """
 

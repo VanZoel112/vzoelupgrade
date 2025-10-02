@@ -6,7 +6,7 @@ Generate Pyrogram/Telethon session string untuk streaming di VC
 Usage:
     python3 genstring.py
 
-Author: VanZoel112
+Author: Vzoel Fox's
 """
 
 import asyncio

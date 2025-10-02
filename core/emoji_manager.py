@@ -3,7 +3,7 @@
 Premium Emoji Manager
 Converts standard emojis to premium emojis if user has Telegram Premium
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.0.0 Python
 """
 

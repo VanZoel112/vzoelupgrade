@@ -3,7 +3,7 @@
 Lock System Manager
 Handles /lock @username commands with auto-delete functionality
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.0.0 Python (Database-backed)
 """
 

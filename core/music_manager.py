@@ -3,7 +3,7 @@
 Music Manager with Voice Chat Streaming
 Uses py-tgcalls for real-time audio streaming
 
-Author: VanZoel112
+Author: Vzoel Fox's
 Version: 2.1.0 Python (Streaming)
 """
 
