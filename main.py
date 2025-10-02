@@ -155,11 +155,17 @@ class VBot:
                 BotCommand(command="about", description="System information"),
 
                 # Music commands
-                BotCommand(command="play", description="Play audio from YouTube"),
-                BotCommand(command="pause", description="Pause current playback"),
-                BotCommand(command="resume", description="Resume playback"),
-                BotCommand(command="stop", description="Stop and clear queue"),
-                BotCommand(command="queue", description="View music queue"),
+                BotCommand(command="play", description="Play Mp3/audio from YouTube/Spotify/link"),
+                BotCommand(command="vplay", description="Play mp4/webm video"),
+                BotCommand(command="pause", description="Pause musik"),
+                BotCommand(command="resume", description="Resume musik"),
+                BotCommand(command="skip", description="Skip ke lagu berikutnya"),
+                BotCommand(command="stop", description="Stop & clear queue"),
+                BotCommand(command="queue", description="Lihat antrian"),
+                BotCommand(command="shuffle", description="Acak queue"),
+                BotCommand(command="loop", description="Loop mode (off/current/all)"),
+                BotCommand(command="seek", description="Jump ke waktu tertentu"),
+                BotCommand(command="volume", description="Adjust volume (0-200)"),
 
                 # Admin commands
                 BotCommand(command="pm", description="Promote user to admin"),
@@ -306,38 +312,33 @@ class VBot:
             elif command == '/dm':
                 await self._handle_demote_command(message, parts)
 
-            # Public music commands (. prefix)
-            elif command in ['.play', '.p']:
+            # Music commands (slash prefix)
+            elif command in ['/play', '/p']:
                 await self._handle_music_command(message, parts, audio_only=True)
-            elif command in ['.plv', '.playvideo']:
+            elif command in ['/vplay', '/vp']:
                 await self._handle_music_command(message, parts, audio_only=False)
-            elif command == '.stop':
-                await self._handle_stop_command(message)
-            elif command == '.pause':
-                await self._handle_pause_command(message)
-            elif command == '.resume':
-                await self._handle_resume_command(message)
-            elif command in ['.queue', '.q']:
-                await self._handle_queue_command(message)
-            elif command == '.join':
-                await self._handle_join_vc_command(message)
-            elif command == '.leave':
-                await self._handle_leave_vc_command(message)
-            elif command == '.gensession':
-                # Handled by plugin
-                pass
-
-            # Legacy aliases (backward compatibility)
-            elif command in ['/play', '/p', '/music']:
-                await self._handle_music_command(message, parts, audio_only=True)
-            elif command in ['/stop', '/end']:
-                await self._handle_stop_command(message)
             elif command == '/pause':
                 await self._handle_pause_command(message)
             elif command == '/resume':
                 await self._handle_resume_command(message)
+            elif command in ['/skip', '/next']:
+                await self._handle_skip_command(message)
+            elif command == '/stop':
+                await self._handle_stop_command(message)
             elif command in ['/queue', '/q']:
                 await self._handle_queue_command(message)
+            elif command == '/shuffle':
+                await self._handle_shuffle_command(message)
+            elif command == '/loop':
+                await self._handle_loop_command(message, parts)
+            elif command == '/seek':
+                await self._handle_seek_command(message, parts)
+            elif command == '/volume':
+                await self._handle_volume_command(message, parts)
+            elif command == '.join':
+                await self._handle_join_vc_command(message)
+            elif command == '.leave':
+                await self._handle_leave_vc_command(message)
 
             # Admin tag commands (/ prefix)
             elif command in ['/tagall', '/tag']:
@@ -412,43 +413,62 @@ class VBot:
 
                 if result.get('queued'):
                     # Song added to queue
-                    mode = "🎙️ VC Queue" if result.get('streaming') else "📋 Download Queue"
+                    mode = "VC Queue" if result.get('streaming') else "Download Queue"
 
-                    # Create inline buttons for queue management
+                    # Create inline buttons - VBot branding
                     buttons = [
                         [
-                            Button.inline("⏭️ Skip", data="music_skip"),
-                            Button.inline("📋 Queue", data="music_queue")
+                            Button.inline("Pause", data="music_pause"),
+                            Button.inline("Skip", data="music_skip")
                         ],
                         [
-                            Button.inline("⏹️ Stop", data="music_stop")
+                            Button.inline("Queue", data="music_queue"),
+                            Button.inline("Shuffle", data="music_shuffle")
+                        ],
+                        [
+                            Button.inline("Loop", data="music_loop"),
+                            Button.inline("Stop", data="music_stop")
+                        ],
+                        [
+                            Button.inline("VBot by Vzoel Fox's", data="vbot_info")
                         ]
                     ]
 
                     await status_msg.edit(
                         f"{mode} **#{result['position']}**\n\n"
-                        f"🎵 **{song['title']}**\n"
-                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}",
+                        f"**{song['title']}**\n"
+                        f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}",
                         buttons=buttons
                     )
                 elif result.get('streaming'):
                     # Streaming in voice chat - add playback control buttons
                     buttons = [
                         [
-                            Button.inline("⏸️ Pause", data="music_pause"),
-                            Button.inline("⏭️ Skip", data="music_skip")
+                            Button.inline("Pause", data="music_pause"),
+                            Button.inline("Resume", data="music_resume")
                         ],
                         [
-                            Button.inline("📋 Queue", data="music_queue"),
-                            Button.inline("⏹️ Stop", data="music_stop")
+                            Button.inline("Skip", data="music_skip"),
+                            Button.inline("Stop", data="music_stop")
+                        ],
+                        [
+                            Button.inline("Queue", data="music_queue"),
+                            Button.inline("Shuffle", data="music_shuffle")
+                        ],
+                        [
+                            Button.inline("Loop", data="music_loop"),
+                            Button.inline("Volume", data="music_volume")
+                        ],
+                        [
+                            Button.inline("VBot by Vzoel Fox's", data="vbot_info")
                         ]
                     ]
 
                     await status_msg.edit(
-                        f"🎙️ **Now Streaming in Voice Chat**\n\n"
-                        f"🎶 **{song['title']}**\n"
-                        f"⏱️ Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n\n"
-                        f"Use the buttons below to control playback ⬇️",
+                        f"**Now Streaming in Voice Chat**\n\n"
+                        f"**{song['title']}**\n"
+                        f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n\n"
+                        f"Use the buttons below to control playback",
                         buttons=buttons
                     )
                 else:
@@ -619,6 +639,156 @@ class VBot:
 
         except Exception as e:
             logger.error(f"Error leaving VC: {e}")
+            await message.reply(f"Error: {str(e)}")
+
+    async def _handle_skip_command(self, message):
+        """Handle /skip command"""
+        if not self.music_manager:
+            await message.reply("Music system not initialized")
+            return
+
+        try:
+            status_msg = await message.reply("**Skipping to next song...**")
+            result = await self.music_manager.skip_song(message.chat_id)
+
+            if result['success']:
+                song = result['song']
+                buttons = [
+                    [
+                        Button.inline("Pause", data="music_pause"),
+                        Button.inline("Skip", data="music_skip")
+                    ],
+                    [
+                        Button.inline("Queue", data="music_queue"),
+                        Button.inline("Stop", data="music_stop")
+                    ],
+                    [
+                        Button.inline("VBot by Vzoel Fox's", data="vbot_info")
+                    ]
+                ]
+
+                await status_msg.edit(
+                    f"**Now Playing**\n\n"
+                    f"**{song['title']}**\n"
+                    f"Duration: {song.get('duration', 0) // 60}:{song.get('duration', 0) % 60:02d}\n"
+                    f"Remaining in queue: {result['remaining']}",
+                    buttons=buttons
+                )
+            else:
+                await status_msg.edit(f"**Error:** {result.get('error', 'Unable to skip')}")
+
+        except Exception as e:
+            await message.reply(f"Error: {str(e)}")
+
+    async def _handle_shuffle_command(self, message):
+        """Handle /shuffle command"""
+        if not self.music_manager:
+            await message.reply("Music system not initialized")
+            return
+
+        try:
+            success = await self.music_manager.shuffle_queue(message.chat_id)
+
+            if success:
+                await message.reply("**Queue shuffled successfully**")
+            else:
+                await message.reply("**Error:** Queue is empty or shuffle failed")
+
+        except Exception as e:
+            await message.reply(f"Error: {str(e)}")
+
+    async def _handle_loop_command(self, message, parts):
+        """Handle /loop command"""
+        if not self.music_manager:
+            await message.reply("Music system not initialized")
+            return
+
+        try:
+            if len(parts) < 2:
+                current_mode = self.music_manager.get_loop_mode(message.chat_id)
+                await message.reply(
+                    f"**Current loop mode:** {current_mode}\n\n"
+                    f"**Usage:** /loop <mode>\n"
+                    f"**Modes:** off, current, all"
+                )
+                return
+
+            mode = parts[1].lower()
+            success = await self.music_manager.set_loop_mode(message.chat_id, mode)
+
+            if success:
+                await message.reply(f"**Loop mode set to:** {mode}")
+            else:
+                await message.reply("**Error:** Invalid mode. Use: off, current, all")
+
+        except Exception as e:
+            await message.reply(f"Error: {str(e)}")
+
+    async def _handle_seek_command(self, message, parts):
+        """Handle /seek command"""
+        if not self.music_manager:
+            await message.reply("Music system not initialized")
+            return
+
+        try:
+            if len(parts) < 2:
+                await message.reply(
+                    f"**Usage:** /seek <timestamp>\n\n"
+                    f"**Examples:**\n"
+                    f"/seek 30 (30 seconds)\n"
+                    f"/seek 1:30 (1 minute 30 seconds)"
+                )
+                return
+
+            # Parse timestamp
+            timestamp = parts[1]
+            if ':' in timestamp:
+                time_parts = timestamp.split(':')
+                seconds = int(time_parts[0]) * 60 + int(time_parts[1])
+            else:
+                seconds = int(timestamp)
+
+            success = await self.music_manager.seek_position(message.chat_id, seconds)
+
+            if success:
+                await message.reply(f"**Seeked to:** {seconds // 60}:{seconds % 60:02d}")
+            else:
+                await message.reply("**Error:** Seek not available (streaming mode only)")
+
+        except ValueError:
+            await message.reply("**Error:** Invalid timestamp format")
+        except Exception as e:
+            await message.reply(f"Error: {str(e)}")
+
+    async def _handle_volume_command(self, message, parts):
+        """Handle /volume command"""
+        if not self.music_manager:
+            await message.reply("Music system not initialized")
+            return
+
+        try:
+            if len(parts) < 2:
+                current_volume = self.music_manager.get_volume(message.chat_id)
+                await message.reply(
+                    f"**Current volume:** {current_volume}\n\n"
+                    f"**Usage:** /volume <0-200>\n\n"
+                    f"**Examples:**\n"
+                    f"/volume 100 (default)\n"
+                    f"/volume 150 (louder)"
+                )
+                return
+
+            volume = int(parts[1])
+            success = await self.music_manager.set_volume(message.chat_id, volume)
+
+            if success:
+                await message.reply(f"**Volume set to:** {volume}")
+            else:
+                await message.reply("**Error:** Volume must be 0-200")
+
+        except ValueError:
+            await message.reply("**Error:** Volume must be a number")
+        except Exception as e:
             await message.reply(f"Error: {str(e)}")
 
     async def _handle_lock_command(self, message, parts):
@@ -1251,50 +1421,102 @@ Contact: @VZLfxs
                 if action == 'pause':
                     success = await self.music_manager.pause_stream(chat_id)
                     if success:
-                        await event.answer("⏸️ Paused")
+                        await event.answer("Paused")
                         # Update button to show resume
                         buttons = [
                             [
-                                Button.inline("▶️ Resume", data="music_resume"),
-                                Button.inline("⏹️ Stop", data="music_stop")
+                                Button.inline("Resume", data="music_resume"),
+                                Button.inline("Skip", data="music_skip")
+                            ],
+                            [
+                                Button.inline("Queue", data="music_queue"),
+                                Button.inline("Stop", data="music_stop")
+                            ],
+                            [
+                                Button.inline("VBot by Vzoel Fox's", data="vbot_info")
                             ]
                         ]
                         await event.edit(buttons=buttons)
                     else:
-                        await event.answer("❌ Failed to pause", alert=True)
+                        await event.answer("Failed to pause", alert=True)
 
                 elif action == 'resume':
                     success = await self.music_manager.resume_stream(chat_id)
                     if success:
-                        await event.answer("▶️ Resumed")
+                        await event.answer("Resumed")
                         # Update button to show pause
                         buttons = [
                             [
-                                Button.inline("⏸️ Pause", data="music_pause"),
-                                Button.inline("⏭️ Skip", data="music_skip")
+                                Button.inline("Pause", data="music_pause"),
+                                Button.inline("Skip", data="music_skip")
                             ],
                             [
-                                Button.inline("📋 Queue", data="music_queue"),
-                                Button.inline("⏹️ Stop", data="music_stop")
+                                Button.inline("Queue", data="music_queue"),
+                                Button.inline("Stop", data="music_stop")
+                            ],
+                            [
+                                Button.inline("VBot by Vzoel Fox's", data="vbot_info")
                             ]
                         ]
                         await event.edit(buttons=buttons)
                     else:
-                        await event.answer("❌ Failed to resume", alert=True)
+                        await event.answer("Failed to resume", alert=True)
 
                 elif action == 'stop':
                     success = await self.music_manager.stop_stream(chat_id)
                     if success:
-                        await event.answer("⏹️ Stopped")
-                        await event.edit("⏹️ **Stopped and cleared queue**")
+                        await event.answer("Stopped")
+                        await event.edit("**Stopped and cleared queue**")
                     else:
-                        await event.answer("❌ No active stream", alert=True)
+                        await event.answer("No active stream", alert=True)
 
                 elif action == 'skip':
-                    # Skip to next song in queue
-                    await event.answer("⏭️ Skipping...")
-                    # Note: Skip functionality would need to be implemented in music_manager
-                    await event.edit("⏭️ **Skipped to next song**")
+                    result = await self.music_manager.skip_song(chat_id)
+                    if result['success']:
+                        await event.answer("Skipped")
+                        song = result['song']
+                        buttons = [
+                            [
+                                Button.inline("Pause", data="music_pause"),
+                                Button.inline("Skip", data="music_skip")
+                            ],
+                            [
+                                Button.inline("Queue", data="music_queue"),
+                                Button.inline("Stop", data="music_stop")
+                            ],
+                            [
+                                Button.inline("VBot by Vzoel Fox's", data="vbot_info")
+                            ]
+                        ]
+                        await event.edit(
+                            f"**Now Playing**\n\n**{song['title']}**\n"
+                            f"Remaining: {result['remaining']}",
+                            buttons=buttons
+                        )
+                    else:
+                        await event.answer(result.get('error', 'Unable to skip'), alert=True)
+
+                elif action == 'shuffle':
+                    success = await self.music_manager.shuffle_queue(chat_id)
+                    if success:
+                        await event.answer("Queue shuffled")
+                    else:
+                        await event.answer("Queue is empty", alert=True)
+
+                elif action == 'loop':
+                    # Cycle through loop modes: off -> current -> all -> off
+                    current_mode = self.music_manager.get_loop_mode(chat_id)
+                    modes = ['off', 'current', 'all']
+                    next_mode = modes[(modes.index(current_mode) + 1) % len(modes)]
+                    await self.music_manager.set_loop_mode(chat_id, next_mode)
+                    await event.answer(f"Loop: {next_mode}")
+
+                elif action == 'volume':
+                    current_volume = self.music_manager.get_volume(chat_id)
+                    await event.answer(
+                        f"Current volume: {current_volume}\n\nUse /volume <0-200> to change",
+                        alert=True
+                    )
 
                 elif action == 'queue':
                     # Show queue
@@ -1302,12 +1524,12 @@ Contact: @VZLfxs
                     queue = self.music_manager.get_queue(chat_id)
 
                     if not current and not queue:
-                        await event.answer("📋 Queue is empty", alert=True)
+                        await event.answer("Queue is empty", alert=True)
                         return
 
-                    response = "📋 **Music Queue**\n\n"
+                    response = "**Music Queue**\n\n"
                     if current:
-                        response += f"🎵 **Now Playing:**\n{current['title']}\n\n"
+                        response += f"**Now Playing:**\n{current['title']}\n\n"
                     if queue:
                         response += "**Up Next:**\n"
                         for i, song in enumerate(queue[:5], 1):
@@ -1316,6 +1538,12 @@ Contact: @VZLfxs
                             response += f"\n... and {len(queue) - 5} more"
 
                     await event.answer(response, alert=True)
+
+            elif data == 'vbot_info':
+                await event.answer(
+                    "VBot Music System\nDeveloped by Vzoel Fox's\n\nGithub: github.com/VanZoel112",
+                    alert=True
+                )
 
             elif data.startswith('welcome_'):
                 # Handle welcome callbacks if needed

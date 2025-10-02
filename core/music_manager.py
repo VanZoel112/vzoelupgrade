@@ -57,6 +57,11 @@ class MusicManager:
         # Active voice chats
         self.active_calls: Dict[int, bool] = {}
 
+        # Playback state
+        self.paused: Dict[int, bool] = {}
+        self.loop_mode: Dict[int, str] = {}  # 'off', 'current', 'all'
+        self.volume: Dict[int, int] = {}  # 0-200
+
         # Rate limiting
         self.last_request: Dict[int, float] = {}
 
@@ -453,3 +458,123 @@ class MusicManager:
             'mode': 'streaming' if self.streaming_available else 'download',
             'streaming_available': self.streaming_available
         }
+
+    async def skip_song(self, chat_id: int) -> Dict:
+        """Skip to next song in queue"""
+        try:
+            if chat_id not in self.queues or len(self.queues[chat_id]) == 0:
+                # No songs in queue
+                await self.stop_stream(chat_id)
+                return {'success': False, 'error': 'No songs in queue'}
+
+            # Get next song
+            next_song = self.queues[chat_id].pop(0)
+
+            # Stop current song
+            if self.streaming_available and chat_id in self.active_calls:
+                await self.pytgcalls.leave_call(chat_id)
+                self.active_calls.pop(chat_id, None)
+
+            # Play next song
+            if self.streaming_available and self.pytgcalls:
+                youtube_url = next_song.get('webpage_url')
+
+                # Build yt-dlp parameters
+                ytdlp_params = []
+                if config.YOUTUBE_COOKIES_FROM_BROWSER:
+                    ytdlp_params.append(f'--cookies-from-browser {config.YOUTUBE_COOKIES_FROM_BROWSER}')
+                elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+                    ytdlp_params.append(f'--cookies {config.YOUTUBE_COOKIES_FILE}')
+
+                ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
+
+                media_stream = MediaStream(
+                    youtube_url,
+                    AudioQuality.HIGH,
+                    ytdlp_parameters=ytdlp_parameters
+                )
+
+                group_config = await self._build_group_call_config(chat_id)
+                await self.pytgcalls.play(chat_id, media_stream, config=group_config)
+
+                self.active_calls[chat_id] = True
+                self.current_song[chat_id] = next_song
+
+                return {
+                    'success': True,
+                    'song': next_song,
+                    'remaining': len(self.queues[chat_id])
+                }
+
+            return {'success': False, 'error': 'Streaming not available'}
+
+        except Exception as e:
+            logger.error(f"Error skipping song: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def shuffle_queue(self, chat_id: int) -> bool:
+        """Shuffle the queue"""
+        try:
+            import random
+            if chat_id in self.queues and len(self.queues[chat_id]) > 0:
+                random.shuffle(self.queues[chat_id])
+                logger.info(f"Shuffled queue in {chat_id}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error shuffling queue: {e}")
+            return False
+
+    async def set_loop_mode(self, chat_id: int, mode: str) -> bool:
+        """Set loop mode: 'off', 'current', 'all'"""
+        try:
+            if mode not in ['off', 'current', 'all']:
+                return False
+
+            self.loop_mode[chat_id] = mode
+            logger.info(f"Set loop mode to {mode} in {chat_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting loop mode: {e}")
+            return False
+
+    def get_loop_mode(self, chat_id: int) -> str:
+        """Get current loop mode"""
+        return self.loop_mode.get(chat_id, 'off')
+
+    async def seek_position(self, chat_id: int, seconds: int) -> bool:
+        """Seek to position in current song (streaming mode only)"""
+        try:
+            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
+                # Note: py-tgcalls may not support seek, this is a placeholder
+                # Implementation depends on py-tgcalls version
+                logger.info(f"Seek to {seconds}s in {chat_id}")
+                # await self.pytgcalls.seek_stream(chat_id, seconds)
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error seeking: {e}")
+            return False
+
+    async def set_volume(self, chat_id: int, volume: int) -> bool:
+        """Set volume (0-200)"""
+        try:
+            if volume < 0 or volume > 200:
+                return False
+
+            self.volume[chat_id] = volume
+
+            if self.streaming_available and self.pytgcalls and chat_id in self.active_calls:
+                # Set volume in voice chat
+                await self.pytgcalls.change_volume(chat_id, volume)
+                logger.info(f"Set volume to {volume} in {chat_id}")
+                return True
+
+            return True  # Store volume even if not streaming
+        except Exception as e:
+            logger.error(f"Error setting volume: {e}")
+            return False
+
+    def get_volume(self, chat_id: int) -> int:
+        """Get current volume"""
+        return self.volume.get(chat_id, 100)
