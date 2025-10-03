@@ -1310,6 +1310,9 @@ Contact @VZLfxs for support & inquiries
                 caption = VBotBranding.wrap_message(response, include_footer=False)
                 buttons = self._build_music_control_buttons(message.chat_id)
                 buttons_param = buttons if buttons else None
+
+                if logo_id:
+                    logo_sent = False
             # Format result message
             if result.get('success'):
                 logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
@@ -1376,6 +1379,9 @@ Contact @VZLfxs for support & inquiries
                         logger.error(f"Failed to send logo artwork: {send_error}")
                         await status_msg.edit(caption, buttons=buttons_param)
                     else:
+                        logo_sent = True
+
+                    if logo_sent:
                         try:
                             await status_msg.delete()
                         except Exception:
