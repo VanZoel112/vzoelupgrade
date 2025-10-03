@@ -8,11 +8,15 @@ Version: 2.0.0 Python
 """
 
 import asyncio
+import io
+import json
 import logging
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, Optional, List, Tuple
 from typing import Dict, Optional, List
 
 # Import advanced logging system
@@ -29,6 +33,7 @@ from telethon.sessions import StringSession
 from telethon.tl.types import MessageEntityMentionName
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.types import BotCommand, BotCommandScopeDefault
+from telethon.utils import pack_bot_file_id
 
 # Import VBot modules
 from core.auth_manager import AuthManager
@@ -79,6 +84,8 @@ class VBot:
             enabled_plugins=getattr(config, "ENABLED_PLUGINS", None),
             disabled_plugins=getattr(config, "DISABLED_PLUGINS", None),
         )
+        self._help_pages = self._build_help_pages()
+        self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
 
     async def initialize(self):
         """Initialize VBot"""
@@ -147,6 +154,9 @@ class VBot:
                 logger.info("Loaded plugins: %s", ", ".join(loaded_plugins))
             else:
                 logger.info("No plugins loaded")
+
+            # Start background GitHub auto push if enabled
+            self.github_sync.start_auto_push_loop()
 
             logger.info("VBot initialization complete")
             return True
@@ -236,48 +246,8 @@ class VBot:
             data = event.data.decode('utf-8')
 
             # Help main callback
-            if data == "help_main":
-                help_text = """
-**VBot Command Reference**
-
-**Music Commands:**
-• `/play <query>` - Play audio (YouTube/Spotify)
-• `/vplay <query>` - Play video
-• `/pause` - Pause playback
-• `/resume` - Resume playback
-• `/skip` - Skip current song
-• `/stop` - Stop and clear queue
-• `/queue` - Show queue
-• `/shuffle` - Shuffle queue
-• `/loop <off/current/all>` - Loop mode
-• `/seek <seconds>` - Jump to position
-• `/volume <0-200>` - Adjust volume
-
-**Group Management:**
-• `/pm @user <title>` - Promote to admin
-• `/dm @user` - Demote from admin
-• `/tagall <text>` - Tag all members
-• `/cancel` - Cancel tag operation
-• `/lock @user` - Lock user (auto-delete)
-• `/unlock @user` - Unlock user
-• `/locklist` - Show locked users
-
-**Bot Commands:**
-• `/start` - Start bot & main menu
-• `/help` - This help message
-• `/about` - Bot information
-• `/ping` - Check bot status
-• `/gensession` - Generate session string
-
-**Prefix Info:**
-• `/` - Public commands (available to all)
-• `+` - Owner commands (developer only)
-• `.` - Admin commands
-
-**VBot Python v2.0.0**
-By Vzoel Fox's
-"""
-                await event.edit(VBotBranding.wrap_message(help_text, include_footer=False))
+            if data.startswith("help:page:"):
+                await self._handle_help_navigation(event, data)
 
             # About callback
             elif data == "about":
@@ -312,6 +282,13 @@ By Vzoel Fox's
 **VBot Python v2.0.0**
 """
                 await event.edit(VBotBranding.wrap_message(about_text, include_footer=False))
+
+            # Branding info callback
+            elif data == "branding:info":
+                await event.answer(
+                    "DEVELOPED by. Vzoel Fox's (Lutpan) ID : @VZLfxs / @itspizolpoks",
+                    alert=True
+                )
 
             # Session generator callback
             elif data == "start_gensession":
@@ -531,6 +508,14 @@ By Vzoel Fox's
             elif command == '#session':
                 await self._handle_session_command(message)
 
+            # JSON/metadata helper
+            elif command in ['/showjson', '.showjson', '+showjson']:
+                await self._handle_showjson_command(message)
+
+            # Music branding configuration
+            elif command in ['/setlogo', '+setlogo']:
+                await self._handle_setlogo_command(message)
+
             # Admin commands
             elif command in ['.stats', '.status']:
                 await self._handle_stats_command(message)
@@ -671,15 +656,15 @@ By Vzoel Fox's
                     ],
                     [
                         Button.url("Add to Group", f"https://t.me/{bot_username}?startgroup=true"),
-                        Button.inline("Help", b"help_main")
+                        Button.inline("Help", f"help:page:0".encode())
                     ]
                 ]
             else:
-                # Group chat buttons: VBot by Vzoel Fox's, Help
+                # Group chat buttons: VBOT info toggle, Help
                 buttons = [
                     [
-                        Button.url("VBot by Vzoel Fox's", "https://t.me/VzoelFoxs"),
-                        Button.inline("Help", b"help_main")
+                        Button.inline("VBOT", b"branding:info"),
+                        Button.inline("Help", f"help:page:0".encode())
                     ]
                 ]
 
@@ -692,52 +677,123 @@ By Vzoel Fox's
             logger.error(f"Error in start command: {e}")
             await message.reply("Welcome to VBot!\n\nType /help for commands.")
 
+    def _build_help_pages(self) -> List[Dict[str, object]]:
+        """Define help sections for slash commands."""
+
+        return [
+            {
+                "label": "Music",
+                "title": "Music Playback",
+                "commands": [
+                    ("`/play <query>`", "Putar audio dari pencarian (alias: `/p`)"),
+                    ("`/vplay <query>`", "Putar video atau streaming visual (alias: `/vp`)"),
+                    ("`/pause`", "Jeda lagu yang sedang diputar"),
+                    ("`/resume`", "Lanjutkan pemutaran yang dijeda"),
+                    ("`/skip`", "Lewati ke lagu berikutnya"),
+                    ("`/stop`", "Hentikan musik dan hapus antrean"),
+                    ("`/queue`", "Tampilkan antrean yang sedang aktif"),
+                    ("`/shuffle`", "Acak urutan antrean"),
+                    ("`/loop <off/current/all>`", "Atur mode pengulangan"),
+                    ("`/seek <detik>`", "Loncat ke posisi tertentu"),
+                    ("`/volume <0-200>`", "Atur volume streaming"),
+                ],
+            },
+            {
+                "label": "Admin",
+                "title": "Administrasi & Moderasi",
+                "commands": [
+                    ("`/pm @user <title>`", "Promosikan anggota menjadi admin"),
+                    ("`/dm @user`", "Turunkan admin menjadi member"),
+                    ("`/adminlist`", "Lihat daftar admin (alias: `/admins`)"),
+                    ("`/lock @user`", "Kunci pengguna agar pesannya dihapus otomatis"),
+                    ("`/unlock @user`", "Buka kunci pengguna"),
+                    ("`/locklist`", "Daftar pengguna yang terkunci"),
+                    ("`/tagall <text>`", "Mention semua anggota"),
+                    ("`/cancel`", "Batalkan penandaan massal"),
+                ],
+            },
+            {
+                "label": "Bot",
+                "title": "Informasi Bot & Utilitas",
+                "commands": [
+                    ("`/start`", "Tampilkan menu utama bot"),
+                    ("`/help`", "Buka panduan interaktif ini"),
+                    ("`/about`", "Informasi detail mengenai bot"),
+                    ("`/ping`", "Cek latensi & uptime"),
+                    ("`/gensession`", "Mulai generator string session"),
+                ],
+            },
+        ]
+
+    def _render_help_page(self, page_index: int) -> Tuple[str, List[List[Button]]]:
+        """Render help page text and inline keyboard for navigation."""
+
+        if not self._help_pages:
+            fallback = VBotBranding.wrap_message("Tidak ada data bantuan.", include_footer=False)
+            return fallback, []
+
+        total_pages = len(self._help_pages)
+        current_index = page_index % total_pages
+        page = self._help_pages[current_index]
+
+        lines = [f"**{page['title']}**", ""]
+        for command, description in page.get("commands", []):
+            lines.append(f"• {command} - {description}")
+
+        lines.append("")
+        lines.append(f"_Halaman {current_index + 1}/{total_pages}_")
+
+        text = VBotBranding.wrap_message("\n".join(lines), include_footer=False)
+
+        toggle_row: List[Button] = []
+        for idx, section in enumerate(self._help_pages):
+            label_prefix = "✅ " if idx == current_index else ""
+            toggle_row.append(
+                Button.inline(
+                    f"{label_prefix}{section['label']}",
+                    f"help:page:{idx}".encode()
+                )
+            )
+
+        navigation_row = [
+            Button.inline("⬅️ Back", f"help:page:{(current_index - 1) % total_pages}".encode()),
+            Button.url("FOUNDER", "https://t.me/VZLfxs"),
+            Button.inline("Next ➡️", f"help:page:{(current_index + 1) % total_pages}".encode()),
+        ]
+
+        return text, [toggle_row, navigation_row]
+
+    async def _send_help_page(self, message, page_index: int):
+        """Send the interactive help page to a chat."""
+
+        text, buttons = self._render_help_page(page_index)
+        await message.reply(text, buttons=buttons if buttons else None)
+
+    async def _handle_help_navigation(self, event, data: str):
+        """Handle inline navigation between help pages."""
+
+        try:
+            _, _, page_str = data.partition("help:page:")
+            page_index = int(page_str) if page_str.isdigit() else 0
+        except ValueError:
+            page_index = 0
+
+        text, buttons = self._render_help_page(page_index)
+
+        try:
+            await event.edit(text, buttons=buttons if buttons else None)
+        except Exception as edit_error:
+            logger.debug(f"Failed to edit help message: {edit_error}")
+        finally:
+            try:
+                await event.answer()
+            except Exception:
+                pass
+
     async def _handle_help_command(self, message):
         """Handle /help command - show all commands"""
         try:
-            help_text = """
-**VBot Command Reference**
-
-**Music Commands:**
-• `/play <query>` - Play audio (YouTube/Spotify)
-• `/vplay <query>` - Play video
-• `/pause` - Pause playback
-• `/resume` - Resume playback
-• `/skip` - Skip current song
-• `/stop` - Stop and clear queue
-• `/queue` - Show queue
-• `/shuffle` - Shuffle queue
-• `/loop <off/current/all>` - Loop mode
-• `/seek <seconds>` - Jump to position
-• `/volume <0-200>` - Adjust volume
-
-**Group Management:**
-• `/pm @user <title>` - Promote to admin
-• `/dm @user` - Demote from admin
-• `/tagall <text>` - Tag all members
-• `/cancel` - Cancel tag operation
-• `/lock @user` - Lock user (auto-delete)
-• `/unlock @user` - Unlock user
-• `/locklist` - Show locked users
-
-**Bot Commands:**
-• `/start` - Start bot & main menu
-• `/help` - This help message
-• `/about` - Bot information
-• `/ping` - Check bot status
-• `/gensession` - Generate session string
-
-**Prefix Info:**
-• `/` - Public commands (available to all)
-• `+` - Owner/Developer commands
-• `.` - Admin commands
-
-Type any command for usage help!
-"""
-
-            await message.reply(
-                VBotBranding.wrap_message(help_text, include_footer=False)
-            )
+            await self._send_help_page(message, 0)
 
         except Exception as e:
             logger.error(f"Error in help command: {e}")
@@ -803,6 +859,251 @@ Contact @VZLfxs for support & inquiries
         except Exception as e:
             logger.error(f"Error in about command: {e}")
             await message.reply("VBot v2.0.0 by Vzoel Fox's")
+
+    async def _handle_showjson_command(self, message):
+        """Return structured metadata for the replied message."""
+
+        try:
+            if not self.auth_manager.is_developer(getattr(message, "sender_id", 0)):
+                await message.reply(VBotBranding.format_error("Perintah ini hanya untuk developer."))
+                return
+
+            reply = await message.get_reply_message()
+            if not reply:
+                await message.reply("Balas ke pesan atau media yang ingin dianalisis dengan perintah ini.")
+                return
+
+            metadata = await self._extract_message_metadata(reply)
+            await self._deliver_json_metadata(message.chat_id, message.id, metadata)
+
+        except Exception as exc:
+            logger.error(f"showjson command failed: {exc}", exc_info=True)
+            await message.reply(VBotBranding.format_error(f"Gagal mengambil metadata: {exc}"))
+
+    async def _handle_setlogo_command(self, message):
+        """Persist the replied media file_id as the default music artwork."""
+
+        try:
+            sender_id = getattr(message, "sender_id", 0)
+            if not self.auth_manager.is_developer(sender_id):
+                await message.reply(VBotBranding.format_error("Perintah ini hanya dapat digunakan oleh developer."))
+                return
+
+            if not message.is_private:
+                await message.reply(VBotBranding.format_error("/setlogo hanya tersedia di private chat dengan bot."))
+                return
+
+            reply = await message.get_reply_message()
+            if not reply:
+                await message.reply("Balas ke foto/stiker/logo yang ingin dijadikan cover musik.")
+                return
+
+            metadata = await self._extract_message_metadata(reply)
+            file_id = metadata.get("file_id")
+            if not file_id:
+                await message.reply(VBotBranding.format_error("Tidak dapat menemukan file_id dari media yang dibalas."))
+                return
+
+            await self._update_music_logo_file_id(file_id)
+
+            success_text = (
+                "Logo musik berhasil diperbarui dan disimpan."
+                "\nFile ID sudah ditulis ke .env dan config.py."
+            )
+            await message.reply(VBotBranding.format_success(success_text))
+            await self._deliver_json_metadata(message.chat_id, message.id, metadata)
+
+        except Exception as exc:
+            logger.error(f"setlogo command failed: {exc}", exc_info=True)
+            await message.reply(VBotBranding.format_error(f"Gagal menyimpan logo: {exc}"))
+
+    async def _deliver_json_metadata(self, chat_id: int, reply_to_id: Optional[int], metadata: Dict[str, Any]) -> None:
+        """Send metadata as formatted JSON or attachment when too large."""
+
+        formatted = self._format_json_metadata(metadata)
+        payload = f"```json\n{formatted}\n```"
+
+        if len(payload) <= 3500:
+            await self.client.send_message(chat_id, payload, reply_to=reply_to_id)
+            return
+
+        buffer = io.BytesIO(formatted.encode("utf-8"))
+        buffer.name = "showjson.json"
+        await self.client.send_file(
+            chat_id,
+            buffer,
+            caption="ShowJSON result",
+            reply_to=reply_to_id,
+        )
+
+    async def _extract_message_metadata(self, target) -> Dict[str, Any]:
+        """Collect metadata about the provided message/media."""
+
+        metadata: Dict[str, Any] = {
+            "chat_id": getattr(target, "chat_id", None),
+            "message_id": getattr(target, "id", None),
+            "sender_id": getattr(target, "sender_id", None),
+            "date": target.date.isoformat() if getattr(target, "date", None) else None,
+            "text": getattr(target, "raw_text", None),
+            "media_type": None,
+        }
+
+        media = getattr(target, "media", None)
+        metadata["media_type"] = media.__class__.__name__ if media else "text"
+
+        file_id: Optional[str] = None
+        if media:
+            try:
+                file_id = pack_bot_file_id(media)
+            except Exception as exc:
+                logger.debug(f"Unable to pack file id: {exc}")
+
+        metadata["file_id"] = file_id
+
+        file_info: Dict[str, Any] = {}
+        file_attr = getattr(target, "file", None)
+        if file_attr:
+            file_info = {
+                "name": getattr(file_attr, "name", None),
+                "size": getattr(file_attr, "size", None),
+                "mime_type": getattr(file_attr, "mime_type", None),
+                "id": getattr(file_attr, "id", None),
+                "access_hash": getattr(file_attr, "access_hash", None),
+                "dc_id": getattr(file_attr, "dc_id", None),
+            }
+        metadata["file"] = file_info or None
+
+        custom_emojis = []
+        entities = getattr(target, "entities", None) or []
+        text_value = getattr(target, "raw_text", "") or ""
+        for entity in entities:
+            if isinstance(entity, types.MessageEntityCustomEmoji):
+                emoji_text = text_value[entity.offset: entity.offset + entity.length]
+                custom_emojis.append(
+                    {
+                        "emoji": emoji_text,
+                        "document_id": getattr(entity, "document_id", None),
+                    }
+                )
+        metadata["custom_emojis"] = custom_emojis or None
+
+        document = getattr(media, "document", None) if media else None
+        if document and getattr(document, "attributes", None):
+            attributes: List[Any] = []
+            for attr in document.attributes:
+                if hasattr(attr, "to_dict"):
+                    attributes.append(attr.to_dict())
+                else:
+                    attributes.append(str(attr))
+            metadata["document_attributes"] = attributes
+
+        photo = getattr(media, "photo", None) if media else getattr(target, "photo", None)
+        if photo and hasattr(photo, "sizes"):
+            sizes = []
+            for size in photo.sizes:
+                if hasattr(size, "to_dict"):
+                    sizes.append(size.to_dict())
+                else:
+                    sizes.append(str(size))
+            metadata["photo_sizes"] = sizes
+
+        try:
+            metadata["raw"] = target.to_dict()
+        except Exception:
+            metadata["raw"] = None
+
+        return metadata
+
+    def _format_json_metadata(self, metadata: Dict[str, Any]) -> str:
+        """Convert metadata dictionary into pretty JSON string."""
+
+        def _default(obj: Any):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            if hasattr(obj, "isoformat"):
+                try:
+                    return obj.isoformat()
+                except Exception:
+                    pass
+            if isinstance(obj, bytes):
+                return obj.hex()
+            if isinstance(obj, Path):
+                return str(obj)
+            return str(obj)
+
+        return json.dumps(metadata, indent=2, ensure_ascii=False, default=_default)
+
+    async def _update_music_logo_file_id(self, file_id: str) -> None:
+        """Persist the logo file id to runtime, config.py, and .env."""
+
+        self._music_logo_file_id = file_id
+        config.MUSIC_LOGO_FILE_ID = file_id
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._write_music_logo_configuration, file_id)
+
+    def _write_music_logo_configuration(self, file_id: str) -> None:
+        """Write the logo file id to .env and config.py."""
+
+        env_path = Path(".env").resolve()
+        self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_ID", file_id)
+
+        config_path = Path(config.__file__).resolve()
+        try:
+            content = config_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.error(f"Failed to read config.py for logo update: {exc}")
+            return
+
+        pattern = re.compile(
+            r'MUSIC_LOGO_FILE_ID = os\.getenv\("MUSIC_LOGO_FILE_ID", ".*?"\)'
+        )
+        replacement = f'MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "{file_id}")'
+        if pattern.search(content):
+            new_content = pattern.sub(replacement, content, count=1)
+        else:
+            new_content = content.replace(
+                'MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "")',
+                replacement,
+                1,
+            )
+
+        if new_content != content:
+            try:
+                config_path.write_text(new_content, encoding="utf-8")
+            except OSError as exc:
+                logger.error(f"Failed to write config.py for logo update: {exc}")
+
+    def _update_env_file_value(self, path: Path, key: str, value: str) -> None:
+        """Insert or replace a key=value pair in an env file."""
+
+        new_line = f'{key}="{value}"'
+
+        lines: List[str] = []
+        try:
+            if path.exists():
+                lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            logger.error(f"Failed to read {path} for env update: {exc}")
+            return
+
+        updated = False
+        for idx, raw_line in enumerate(lines):
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.split("=", 1)[0].strip() == key:
+                lines[idx] = new_line
+                updated = True
+                break
+
+        if not updated:
+            lines.append(new_line)
+
+        try:
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except OSError as exc:
+            logger.error(f"Failed to write {path} for env update: {exc}")
 
     def _build_music_status_message(self, chat_id: int) -> str:
         """Return formatted status for current playback."""
@@ -966,12 +1267,39 @@ Contact @VZLfxs for support & inquiries
 
             # Format result message
             if result.get('success'):
+                logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
                 if result.get('streaming'):
                     if result.get('queued'):
                         response = self._format_music_queue_response(message.chat_id, result)
                     else:
                         response = self._build_music_status_message(message.chat_id)
 
+                    caption = VBotBranding.wrap_message(response, include_footer=False)
+                    buttons = self._build_music_control_buttons(message.chat_id)
+                    buttons_param = buttons if buttons else None
+
+                    if logo_id:
+                        try:
+                            await self.client.send_file(
+                                message.chat_id,
+                                logo_id,
+                                caption=caption,
+                                buttons=buttons_param,
+                                force_document=False,
+                            )
+                            try:
+                                await status_msg.delete()
+                            except Exception:
+                                pass
+                        except Exception as send_error:
+                            logger.error(f"Failed to send logo artwork: {send_error}")
+                            await status_msg.edit(caption, buttons=buttons_param)
+                    else:
+                        await status_msg.edit(caption, buttons=buttons_param)
+                else:
+                    response = self._format_music_download_response(result)
+                    caption = VBotBranding.wrap_message(response, include_footer=False)
+                    await status_msg.edit(caption)
                     buttons = self._build_music_control_buttons(message.chat_id)
                     await status_msg.edit(response, buttons=buttons)
                 else:
@@ -988,13 +1316,13 @@ Contact @VZLfxs for support & inquiries
                         uploader = song_info.get('uploader')
                         if uploader:
                             caption_lines.append(f"**Uploader:** {uploader}")
-                        caption = "\n".join(caption_lines)
+                        file_caption = VBotBranding.wrap_message("\n".join(caption_lines), include_footer=False)
 
                         try:
                             await self.client.send_file(
                                 message.chat_id,
                                 file_path,
-                                caption=VBotBranding.wrap_message(caption, include_footer=False),
+                                caption=file_caption,
                                 force_document=False,
                                 supports_streaming=True
                             )

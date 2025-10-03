@@ -243,6 +243,8 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # Your GitHub personal access toke
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "")  # Format: username/repo
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 GITHUB_AUTO_COMMIT = _get_bool("GITHUB_AUTO_COMMIT", True)
+GITHUB_AUTO_PUSH = _get_bool("GITHUB_AUTO_PUSH", False)
+GITHUB_AUTO_PUSH_INTERVAL = int(os.getenv("GITHUB_AUTO_PUSH_INTERVAL", "1200"))
 
 
 # ==============================================
