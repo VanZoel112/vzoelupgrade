@@ -14,11 +14,17 @@ import logging
 import re
 import sys
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Optional, List, Tuple
-from typing import Dict, Optional, List
+from typing import Any, Deque, Dict, Optional, List, Set, Tuple
+
+try:
+    import uvloop
+except ImportError:  # pragma: no cover - optional dependency
+    uvloop = None
 
 # Import advanced logging system
 from core.logger import setup_logging, vbot_logger
@@ -89,6 +95,9 @@ class VBot:
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
         self._admin_sync_cache: Dict[int, float] = {}
         self._admin_sync_interval = getattr(config, "GROUP_ADMIN_SYNC_INTERVAL", 600)
+        self._premium_wrapper_ids: Set[int] = set()
+        self._premium_wrapper_id_queue: Deque[int] = deque()
+        self._premium_wrapper_id_limit = 4096
 
     async def initialize(self):
         """Initialize VBot"""
@@ -230,11 +239,8 @@ class VBot:
                 if deleted:
                     return
 
-            # Process emojis for premium users
-            if config.ENABLE_PREMIUM_EMOJI and hasattr(message, 'sender_id'):
-                _ = await self.emoji_manager.process_message_emojis(
-                    self.client, message.text, message.sender_id
-                )
+            # Enable premium emoji responses for this user
+            self._prepare_premium_wrappers(message, getattr(message, "sender_id", None))
 
             # Handle commands
             if message.text.startswith(('.', '/', '+', '#')):
@@ -242,6 +248,180 @@ class VBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
+    async def _prepare_premium_arguments(
+        self,
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
+        user_id: Optional[int],
+    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
+        """Convert textual arguments for premium users when needed."""
+
+        new_args = args
+        new_kwargs = dict(kwargs)
+        text_arg, location = self._extract_text_argument(new_args, new_kwargs)
+
+        if isinstance(text_arg, str):
+            converted = await self._convert_for_user(text_arg, user_id)
+            if isinstance(converted, str) and converted != text_arg and location:
+                new_args, new_kwargs = self._apply_text_argument(
+                    new_args, new_kwargs, location, converted
+                )
+
+        return new_args, new_kwargs
+
+    def _register_wrapped_message(self, message_obj) -> bool:
+        """Record that a message has premium wrappers to avoid double wrapping."""
+
+        try:
+            setattr(message_obj, "_premium_hooks_applied", True)
+            return True
+        except AttributeError:
+            message_id = id(message_obj)
+            if message_id in self._premium_wrapper_ids:
+                return False
+            self._premium_wrapper_ids.add(message_id)
+            self._premium_wrapper_id_queue.append(message_id)
+            while len(self._premium_wrapper_id_queue) > self._premium_wrapper_id_limit:
+                old_id = self._premium_wrapper_id_queue.popleft()
+                self._premium_wrapper_ids.discard(old_id)
+            return True
+
+    def _prepare_premium_wrappers(self, message_obj, user_id: Optional[int]) -> None:
+        """Wrap reply/edit helpers so bot responses honour premium emojis."""
+
+        if (
+            not config.ENABLE_PREMIUM_EMOJI
+            or not isinstance(user_id, int)
+            or user_id <= 0
+            or message_obj is None
+        ):
+            return
+
+        if getattr(message_obj, "_premium_hooks_applied", False):
+            return
+
+        if id(message_obj) in self._premium_wrapper_ids:
+            return
+
+        if not self._register_wrapped_message(message_obj):
+            return
+
+        original_reply = getattr(message_obj, "reply", None)
+        if callable(original_reply):
+
+            @wraps(original_reply)
+            async def reply_with_premium(*args, **kwargs):
+                patched_args, patched_kwargs = await self._prepare_premium_arguments(
+                    args, kwargs, user_id
+                )
+                result = await original_reply(*patched_args, **patched_kwargs)
+                self._propagate_premium_wrappers(result, user_id)
+                return result
+
+            message_obj.reply = reply_with_premium  # type: ignore[assignment]
+
+        original_edit = getattr(message_obj, "edit", None)
+        if callable(original_edit):
+
+            @wraps(original_edit)
+            async def edit_with_premium(*args, **kwargs):
+                patched_args, patched_kwargs = await self._prepare_premium_arguments(
+                    args, kwargs, user_id
+                )
+                result = await original_edit(*patched_args, **patched_kwargs)
+                self._propagate_premium_wrappers(result, user_id)
+                return result
+
+            message_obj.edit = edit_with_premium  # type: ignore[assignment]
+
+    def _propagate_premium_wrappers(self, result, user_id: Optional[int]) -> None:
+        """Apply premium wrappers to any messages returned by helper calls."""
+
+        if not result:
+            return
+
+        if isinstance(result, list):
+            for item in result:
+                self._prepare_premium_wrappers(item, user_id)
+        else:
+            self._prepare_premium_wrappers(result, user_id)
+
+    @staticmethod
+    def _extract_text_argument(
+        args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> Tuple[Optional[str], Optional[Tuple[str, Any]]]:
+        """Locate textual arguments passed to Telethon helpers."""
+
+        if args:
+            value = args[0]
+            return (value if isinstance(value, str) else None), ("args", 0)
+
+        for key in ("message", "text"):
+            if key in kwargs:
+                value = kwargs[key]
+                return (value if isinstance(value, str) else None), ("kwargs", key)
+
+        return None, None
+
+    @staticmethod
+    def _apply_text_argument(
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
+        location: Optional[Tuple[str, Any]],
+        new_text: str,
+    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
+        """Replace text in args/kwargs based on the provided location descriptor."""
+
+        if not location:
+            return args, kwargs
+
+        target_type, target_key = location
+        if target_type == "args":
+            items = list(args)
+            items[int(target_key)] = new_text
+            return tuple(items), kwargs
+
+        kwargs[str(target_key)] = new_text
+        return args, kwargs
+
+    async def _convert_for_user(
+        self, text: Optional[str], user_id: Optional[int]
+    ) -> Optional[str]:
+        """Convert plain emoji text to premium equivalents for specific users."""
+
+        if (
+            not isinstance(text, str)
+            or not isinstance(user_id, int)
+            or user_id <= 0
+            or not config.ENABLE_PREMIUM_EMOJI
+        ):
+            return text
+
+        return await self.emoji_manager.process_message_emojis(
+            self.client, text, user_id
+        )
+
+    async def _send_premium_message(
+        self,
+        chat_id: int,
+        text: str,
+        *,
+        reply_to: Optional[int] = None,
+        user_id: Optional[int] = None,
+        **kwargs: Any,
+    ):
+        """Send a message while honouring premium emoji mappings."""
+
+        prepared = await self._convert_for_user(text, user_id)
+        result = await self.client.send_message(
+            chat_id,
+            prepared if isinstance(prepared, str) else text,
+            reply_to=reply_to,
+            **kwargs,
+        )
+        self._propagate_premium_wrappers(result, user_id)
+        return result
 
     async def _handle_callback(self, event):
         """Handle inline button callbacks"""
@@ -898,13 +1078,42 @@ Contact @VZLfxs for support & inquiries
                 await message.reply(VBotBranding.format_error("Perintah ini hanya untuk developer."))
                 return
 
+            sender_id = getattr(message, "sender_id", 0)
+            if not await self.emoji_manager.is_user_premium(self.client, sender_id):
+                await message.reply(
+                    VBotBranding.format_error(
+                        "Fitur mapping premium membutuhkan akun Telegram Premium."
+                    )
+                )
+                return
+
             reply = await message.get_reply_message()
             if not reply:
                 await message.reply("Balas ke pesan atau media yang ingin dianalisis dengan perintah ini.")
                 return
 
             metadata = await self._extract_message_metadata(reply)
-            await self._deliver_json_metadata(message.chat_id, message.id, metadata)
+            new_mappings = self.emoji_manager.record_mapping_from_metadata(metadata)
+
+            response_lines = []
+            if new_mappings:
+                response_lines.append("Mapping emoji premium berhasil diperbarui otomatis!")
+                for standard, values in new_mappings.items():
+                    if standard == "__pool__":
+                        for emoji in values:
+                            response_lines.append(f"• Ditambahkan ke pool: {emoji}")
+                    else:
+                        preview = " / ".join(values)
+                        response_lines.append(f"• {standard} → {preview}")
+            else:
+                response_lines.append("Tidak ada emoji premium baru yang dapat dipetakan dari pesan ini.")
+
+            random_premium = self.emoji_manager.get_random_premium_emoji()
+            if random_premium:
+                response_lines.append("")
+                response_lines.append(f"Emoji premium acak: {random_premium}")
+
+            await message.reply(VBotBranding.format_success("\n".join(response_lines)))
 
         except Exception as exc:
             logger.error(f"showjson command failed: {exc}", exc_info=True)
@@ -941,28 +1150,45 @@ Contact @VZLfxs for support & inquiries
                 "\nFile ID sudah ditulis ke .env dan config.py."
             )
             await message.reply(VBotBranding.format_success(success_text))
-            await self._deliver_json_metadata(message.chat_id, message.id, metadata)
+            await self._deliver_json_metadata(
+                message.chat_id,
+                message.id,
+                metadata,
+                requester_id=sender_id,
+            )
 
         except Exception as exc:
             logger.error(f"setlogo command failed: {exc}", exc_info=True)
             await message.reply(VBotBranding.format_error(f"Gagal menyimpan logo: {exc}"))
 
-    async def _deliver_json_metadata(self, chat_id: int, reply_to_id: Optional[int], metadata: Dict[str, Any]) -> None:
+    async def _deliver_json_metadata(
+        self,
+        chat_id: int,
+        reply_to_id: Optional[int],
+        metadata: Dict[str, Any],
+        requester_id: Optional[int] = None,
+    ) -> None:
         """Send metadata as formatted JSON or attachment when too large."""
 
         formatted = self._format_json_metadata(metadata)
         payload = f"```json\n{formatted}\n```"
 
         if len(payload) <= 3500:
-            await self.client.send_message(chat_id, payload, reply_to=reply_to_id)
+            await self._send_premium_message(
+                chat_id,
+                payload,
+                reply_to=reply_to_id,
+                user_id=requester_id,
+            )
             return
 
         buffer = io.BytesIO(formatted.encode("utf-8"))
         buffer.name = "showjson.json"
+        caption_text = await self._convert_for_user("ShowJSON result", requester_id)
         await self.client.send_file(
             chat_id,
             buffer,
-            caption="ShowJSON result",
+            caption=caption_text if isinstance(caption_text, str) else "ShowJSON result",
             reply_to=reply_to_id,
         )
 
@@ -1013,6 +1239,8 @@ Contact @VZLfxs for support & inquiries
                     {
                         "emoji": emoji_text,
                         "document_id": getattr(entity, "document_id", None),
+                        "offset": getattr(entity, "offset", None),
+                        "length": getattr(entity, "length", None),
                     }
                 )
         metadata["custom_emojis"] = custom_emojis or None
@@ -1301,6 +1529,7 @@ Contact @VZLfxs for support & inquiries
                 return
 
             logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
+
             if result.get('streaming'):
                 if result.get('queued'):
                     response = self._format_music_queue_response(message.chat_id, result)
@@ -1312,61 +1541,6 @@ Contact @VZLfxs for support & inquiries
                 buttons_param = buttons if buttons else None
 
                 if logo_id:
-                    logo_sent = False
-            # Format result message
-            if result.get('success'):
-                logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
-                if result.get('streaming'):
-                    if result.get('queued'):
-                        response = self._format_music_queue_response(message.chat_id, result)
-                    else:
-                        response = self._build_music_status_message(message.chat_id)
-
-                    caption = VBotBranding.wrap_message(response, include_footer=False)
-                    buttons = self._build_music_control_buttons(message.chat_id)
-                    buttons_param = buttons if buttons else None
-
-                    if logo_id:
-                        try:
-                            await self.client.send_file(
-                                message.chat_id,
-                                logo_id,
-                                caption=caption,
-                                buttons=buttons_param,
-                                force_document=False,
-                            )
-                            try:
-                                await status_msg.delete()
-                            except Exception:
-                                pass
-                        except Exception as send_error:
-                            logger.error(f"Failed to send logo artwork: {send_error}")
-                            await status_msg.edit(caption, buttons=buttons_param)
-                    else:
-                        await status_msg.edit(caption, buttons=buttons_param)
-                else:
-                    response = self._format_music_download_response(result)
-                    caption = VBotBranding.wrap_message(response, include_footer=False)
-                    await status_msg.edit(caption)
-                    buttons = self._build_music_control_buttons(message.chat_id)
-                    await status_msg.edit(response, buttons=buttons)
-                    else:
-                    response = self._format_music_download_response(result)
-                    await status_msg.edit(response)
-
-                    file_path = result.get('file_path')
-                    if file_path:
-                        song_info = result.get('song', {})
-                        caption_lines = [
-                            f"**Title:** {song_info.get('title', 'Unknown')}",
-                            f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
-                        ]
-                        uploader = song_info.get('uploader')
-                        if uploader:
-                            caption_lines.append(f"**Uploader:** {uploader}")
-                        file_caption = VBotBranding.wrap_message("\n".join(caption_lines), include_footer=False)
-
-                if logo_id:
                     try:
                         await self.client.send_file(
                             message.chat_id,
@@ -1375,20 +1549,16 @@ Contact @VZLfxs for support & inquiries
                             buttons=buttons_param,
                             force_document=False,
                         )
-                    except Exception as send_error:
-                        logger.error(f"Failed to send logo artwork: {send_error}")
-                        await status_msg.edit(caption, buttons=buttons_param)
-                    else:
-                        logo_sent = True
-
-                    if logo_sent:
                         try:
                             await status_msg.delete()
                         except Exception:
                             pass
-                    return
+                    except Exception as send_error:
+                        logger.error(f"Failed to send logo artwork: {send_error}")
+                        await status_msg.edit(caption, buttons=buttons_param)
+                else:
+                    await status_msg.edit(caption, buttons=buttons_param)
 
-                await status_msg.edit(caption, buttons=buttons_param)
                 return
 
             response = self._format_music_download_response(result)
@@ -1408,6 +1578,12 @@ Contact @VZLfxs for support & inquiries
             if uploader:
                 caption_lines.append(f"**Uploader:** {uploader}")
             file_caption = VBotBranding.wrap_message("\n".join(caption_lines), include_footer=False)
+            converted_caption = await self._convert_for_user(
+                file_caption,
+                getattr(message, "sender_id", None),
+            )
+            if isinstance(converted_caption, str):
+                file_caption = converted_caption
 
             try:
                 await self.client.send_file(
@@ -1419,26 +1595,12 @@ Contact @VZLfxs for support & inquiries
                 )
             except Exception as send_error:
                 logger.error(f"Failed to send media file: {send_error}")
-                await self.client.send_message(
+                await self._send_premium_message(
                     message.chat_id,
-                    VBotBranding.format_error(f"Gagal mengirim file: {send_error}")
+                    VBotBranding.format_error(f"Gagal mengirim file: {send_error}"),
+                    user_id=getattr(message, "sender_id", None),
                 )
-                            await self.client.send_file(
-                                message.chat_id,
-                                file_path,
-                                caption=file_caption,
-                                force_document=False,
-                                supports_streaming=True
-                            )
-                        except Exception as send_error:
-                            logger.error(f"Failed to send media file: {send_error}")
-                            await self.client.send_message(
-                                message.chat_id,
-                                VBotBranding.format_error(f"Gagal mengirim file: {send_error}")
-                            )
-            else:
-                error_msg = result.get('error', 'Unknown error')
-                await status_msg.edit(f"**Error:** {error_msg}")
+            return
 
         except Exception as e:
             logger.error(f"Music command error: {e}", exc_info=True)
@@ -2237,6 +2399,8 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        if uvloop is not None:
+            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
