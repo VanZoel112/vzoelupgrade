@@ -1301,6 +1301,7 @@ Contact @VZLfxs for support & inquiries
                 return
 
             logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
+
             if result.get('streaming'):
                 if result.get('queued'):
                     response = self._format_music_queue_response(message.chat_id, result)
@@ -1312,61 +1313,6 @@ Contact @VZLfxs for support & inquiries
                 buttons_param = buttons if buttons else None
 
                 if logo_id:
-                    logo_sent = False
-            # Format result message
-            if result.get('success'):
-                logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
-                if result.get('streaming'):
-                    if result.get('queued'):
-                        response = self._format_music_queue_response(message.chat_id, result)
-                    else:
-                        response = self._build_music_status_message(message.chat_id)
-
-                    caption = VBotBranding.wrap_message(response, include_footer=False)
-                    buttons = self._build_music_control_buttons(message.chat_id)
-                    buttons_param = buttons if buttons else None
-
-                    if logo_id:
-                        try:
-                            await self.client.send_file(
-                                message.chat_id,
-                                logo_id,
-                                caption=caption,
-                                buttons=buttons_param,
-                                force_document=False,
-                            )
-                            try:
-                                await status_msg.delete()
-                            except Exception:
-                                pass
-                        except Exception as send_error:
-                            logger.error(f"Failed to send logo artwork: {send_error}")
-                            await status_msg.edit(caption, buttons=buttons_param)
-                    else:
-                        await status_msg.edit(caption, buttons=buttons_param)
-                else:
-                    response = self._format_music_download_response(result)
-                    caption = VBotBranding.wrap_message(response, include_footer=False)
-                    await status_msg.edit(caption)
-                    buttons = self._build_music_control_buttons(message.chat_id)
-                    await status_msg.edit(response, buttons=buttons)
-                    else:
-                    response = self._format_music_download_response(result)
-                    await status_msg.edit(response)
-
-                    file_path = result.get('file_path')
-                    if file_path:
-                        song_info = result.get('song', {})
-                        caption_lines = [
-                            f"**Title:** {song_info.get('title', 'Unknown')}",
-                            f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
-                        ]
-                        uploader = song_info.get('uploader')
-                        if uploader:
-                            caption_lines.append(f"**Uploader:** {uploader}")
-                        file_caption = VBotBranding.wrap_message("\n".join(caption_lines), include_footer=False)
-
-                if logo_id:
                     try:
                         await self.client.send_file(
                             message.chat_id,
@@ -1375,20 +1321,16 @@ Contact @VZLfxs for support & inquiries
                             buttons=buttons_param,
                             force_document=False,
                         )
-                    except Exception as send_error:
-                        logger.error(f"Failed to send logo artwork: {send_error}")
-                        await status_msg.edit(caption, buttons=buttons_param)
-                    else:
-                        logo_sent = True
-
-                    if logo_sent:
                         try:
                             await status_msg.delete()
                         except Exception:
                             pass
-                    return
+                    except Exception as send_error:
+                        logger.error(f"Failed to send logo artwork: {send_error}")
+                        await status_msg.edit(caption, buttons=buttons_param)
+                else:
+                    await status_msg.edit(caption, buttons=buttons_param)
 
-                await status_msg.edit(caption, buttons=buttons_param)
                 return
 
             response = self._format_music_download_response(result)
@@ -1423,22 +1365,7 @@ Contact @VZLfxs for support & inquiries
                     message.chat_id,
                     VBotBranding.format_error(f"Gagal mengirim file: {send_error}")
                 )
-                            await self.client.send_file(
-                                message.chat_id,
-                                file_path,
-                                caption=file_caption,
-                                force_document=False,
-                                supports_streaming=True
-                            )
-                        except Exception as send_error:
-                            logger.error(f"Failed to send media file: {send_error}")
-                            await self.client.send_message(
-                                message.chat_id,
-                                VBotBranding.format_error(f"Gagal mengirim file: {send_error}")
-                            )
-            else:
-                error_msg = result.get('error', 'Unknown error')
-                await status_msg.edit(f"**Error:** {error_msg}")
+            return
 
         except Exception as e:
             logger.error(f"Music command error: {e}", exc_info=True)
