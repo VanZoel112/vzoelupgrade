@@ -982,18 +982,188 @@ Contact @VZLfxs for support & inquiries
             result = await self.music_manager.set_volume(message.chat_id, volume)
             await message.reply(result)
         except ValueError:
-            await message.reply("❌ Invalid number! Use: `/volume <0-200>`")
+            await message.reply("Invalid number! Use: `/volume <0-200>`")
         except Exception as e:
             logger.error(f"Volume error: {e}")
-            await message.reply(f"❌ Volume error: {str(e)}")
+            await message.reply(f"Volume error: {str(e)}")
 
     async def _handle_promote_command(self, message, parts):
-        """Handle /pm (promote) command - stub"""
-        await message.reply("🚧 **Promote command under development**\n\nComing soon!")
+        """Handle /pm (promote) command - promote user to admin"""
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Promote command only works in groups!**")
+            return
+
+        try:
+            # Get target user
+            target_user_id = None
+            title = "Admin"
+
+            # Method 1: Reply to message
+            if message.reply_to_msg_id:
+                replied_msg = await message.get_reply_message()
+                if replied_msg:
+                    target_user_id = replied_msg.sender_id
+                    # Get title from parts if provided
+                    if len(parts) > 1:
+                        title = ' '.join(parts[1:])
+
+            # Method 2: From @username or ID
+            elif len(parts) >= 2:
+                target = parts[1]
+
+                # Handle @username
+                if target.startswith('@'):
+                    try:
+                        entity = await self.client.get_entity(target)
+                        target_user_id = entity.id
+                    except Exception as e:
+                        await message.reply(f"**Error:** Could not find user {target}")
+                        return
+
+                # Handle user ID
+                elif target.isdigit():
+                    target_user_id = int(target)
+
+                # Get title if provided
+                if len(parts) > 2:
+                    title = ' '.join(parts[2:])
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** `/pm @username [title]` or `/pm <user_id> [title]` or reply to message\n\n"
+                    "**Examples:**\n"
+                    "• `/pm @user Admin`\n"
+                    "• `/pm @user`\n"
+                    "• Reply to user message with `/pm Moderator`"
+                )
+                return
+
+            # Promote user
+            from telethon.tl.functions.channels import EditAdminRequest
+            from telethon.tl.types import ChatAdminRights
+
+            rights = ChatAdminRights(
+                change_info=True,
+                post_messages=True,
+                edit_messages=True,
+                delete_messages=True,
+                ban_users=True,
+                invite_users=True,
+                pin_messages=True,
+                add_admins=False,
+                manage_call=True
+            )
+
+            await self.client(EditAdminRequest(
+                channel=message.chat_id,
+                user_id=target_user_id,
+                admin_rights=rights,
+                rank=title[:16]  # Max 16 characters for title
+            ))
+
+            try:
+                user_entity = await self.client.get_entity(target_user_id)
+                username = f"@{user_entity.username}" if user_entity.username else f"User {target_user_id}"
+                name = user_entity.first_name or "User"
+            except:
+                username = f"User {target_user_id}"
+                name = "User"
+
+            await message.reply(
+                f"**User Promoted**\n\n"
+                f"**User:** {name} ({username})\n"
+                f"**Title:** {title}\n\n"
+                f"User is now an admin with full permissions."
+            )
+
+        except Exception as e:
+            logger.error(f"Error in promote command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}\n\nMake sure bot has admin rights to promote users.")
 
     async def _handle_demote_command(self, message, parts):
-        """Handle /dm (demote) command - stub"""
-        await message.reply("🚧 **Demote command under development**\n\nComing soon!")
+        """Handle /dm (demote) command - demote user from admin"""
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Demote command only works in groups!**")
+            return
+
+        try:
+            # Get target user
+            target_user_id = None
+
+            # Method 1: Reply to message
+            if message.reply_to_msg_id:
+                replied_msg = await message.get_reply_message()
+                if replied_msg:
+                    target_user_id = replied_msg.sender_id
+
+            # Method 2: From @username or ID
+            elif len(parts) >= 2:
+                target = parts[1]
+
+                # Handle @username
+                if target.startswith('@'):
+                    try:
+                        entity = await self.client.get_entity(target)
+                        target_user_id = entity.id
+                    except Exception as e:
+                        await message.reply(f"**Error:** Could not find user {target}")
+                        return
+
+                # Handle user ID
+                elif target.isdigit():
+                    target_user_id = int(target)
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** `/dm @username` or `/dm <user_id>` or reply to message\n\n"
+                    "**Examples:**\n"
+                    "• `/dm @user`\n"
+                    "• `/dm 123456789`\n"
+                    "• Reply to admin message with `/dm`"
+                )
+                return
+
+            # Demote user (remove admin rights)
+            from telethon.tl.functions.channels import EditAdminRequest
+            from telethon.tl.types import ChatAdminRights
+
+            # Empty rights = demote
+            rights = ChatAdminRights(
+                change_info=False,
+                post_messages=False,
+                edit_messages=False,
+                delete_messages=False,
+                ban_users=False,
+                invite_users=False,
+                pin_messages=False,
+                add_admins=False,
+                manage_call=False
+            )
+
+            await self.client(EditAdminRequest(
+                channel=message.chat_id,
+                user_id=target_user_id,
+                admin_rights=rights,
+                rank=""
+            ))
+
+            try:
+                user_entity = await self.client.get_entity(target_user_id)
+                username = f"@{user_entity.username}" if user_entity.username else f"User {target_user_id}"
+                name = user_entity.first_name or "User"
+            except:
+                username = f"User {target_user_id}"
+                name = "User"
+
+            await message.reply(
+                f"**User Demoted**\n\n"
+                f"**User:** {name} ({username})\n\n"
+                f"User is no longer an admin."
+            )
+
+        except Exception as e:
+            logger.error(f"Error in demote command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}\n\nMake sure bot has admin rights to demote users.")
 
     async def _handle_adminlist_command(self, message):
         """Handle /adminlist command - stub"""
@@ -1016,16 +1186,153 @@ Contact @VZLfxs for support & inquiries
         await message.reply("🚧 **Backup command under development**\n\nComing soon!")
 
     async def _handle_lock_command(self, message, parts):
-        """Handle /lock command - stub"""
-        await message.reply("🚧 **Lock command under development**\n\nUse lock_manager module. Coming soon!")
+        """Handle /lock command - lock user with auto-delete"""
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Lock command only works in groups!**")
+            return
+
+        try:
+            # Try to get user ID from different sources
+            target_user_id = None
+
+            # Method 1: Reply to message
+            target_user_id = await self.lock_manager.extract_user_from_reply(message)
+
+            # Method 2: From mention in message
+            if not target_user_id:
+                target_user_id = await self.lock_manager.extract_user_from_mention(self.client, message)
+
+            # Method 3: From command argument (@username or ID)
+            if not target_user_id:
+                target_user_id = await self.lock_manager.parse_lock_command(self.client, message)
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** `/lock @username` or `/lock <user_id>` or reply to user's message\n\n"
+                    "**Examples:**\n"
+                    "• `/lock @spammer`\n"
+                    "• `/lock 123456789`\n"
+                    "• Reply to user message with `/lock`"
+                )
+                return
+
+            # Get reason if provided
+            reason = "Locked by admin"
+            if len(parts) > 2:
+                reason = ' '.join(parts[2:])
+            elif len(parts) == 2 and not parts[1].startswith('@') and not parts[1].isdigit():
+                reason = parts[1]
+
+            # Lock the user
+            success = await self.lock_manager.lock_user(message.chat_id, target_user_id, reason)
+
+            if success:
+                try:
+                    user_entity = await self.client.get_entity(target_user_id)
+                    username = f"@{user_entity.username}" if user_entity.username else f"User {target_user_id}"
+                except:
+                    username = f"User {target_user_id}"
+
+                await message.reply(
+                    f"**User Locked**\n\n"
+                    f"**User:** {username}\n"
+                    f"**Reason:** {reason}\n\n"
+                    f"All messages from this user will be auto-deleted."
+                )
+            else:
+                await message.reply("**Error:** Failed to lock user. Database error.")
+
+        except Exception as e:
+            logger.error(f"Error in lock command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}")
 
     async def _handle_unlock_command(self, message, parts):
-        """Handle /unlock command - stub"""
-        await message.reply("🚧 **Unlock command under development**\n\nComing soon!")
+        """Handle /unlock command - unlock user"""
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Unlock command only works in groups!**")
+            return
+
+        try:
+            # Try to get user ID from different sources
+            target_user_id = None
+
+            # Method 1: Reply to message
+            target_user_id = await self.lock_manager.extract_user_from_reply(message)
+
+            # Method 2: From mention in message
+            if not target_user_id:
+                target_user_id = await self.lock_manager.extract_user_from_mention(self.client, message)
+
+            # Method 3: From command argument (@username or ID)
+            if not target_user_id:
+                target_user_id = await self.lock_manager.parse_lock_command(self.client, message)
+
+            if not target_user_id:
+                await message.reply(
+                    "**Usage:** `/unlock @username` or `/unlock <user_id>` or reply to user's message\n\n"
+                    "**Examples:**\n"
+                    "• `/unlock @user`\n"
+                    "• `/unlock 123456789`\n"
+                    "• Reply to user message with `/unlock`"
+                )
+                return
+
+            # Unlock the user
+            success = await self.lock_manager.unlock_user(message.chat_id, target_user_id)
+
+            if success:
+                try:
+                    user_entity = await self.client.get_entity(target_user_id)
+                    username = f"@{user_entity.username}" if user_entity.username else f"User {target_user_id}"
+                except:
+                    username = f"User {target_user_id}"
+
+                await message.reply(
+                    f"**User Unlocked**\n\n"
+                    f"**User:** {username}\n\n"
+                    f"User can now send messages normally."
+                )
+            else:
+                await message.reply("**Error:** Failed to unlock user or user is not locked.")
+
+        except Exception as e:
+            logger.error(f"Error in unlock command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}")
 
     async def _handle_locklist_command(self, message):
-        """Handle /locklist command - stub"""
-        await message.reply("🚧 **Lock list under development**\n\nComing soon!")
+        """Handle /locklist command - show locked users"""
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Lock list only works in groups!**")
+            return
+
+        try:
+            locked_users = self.lock_manager.get_locked_users(message.chat_id)
+
+            if not locked_users:
+                await message.reply("**No locked users in this chat.**")
+                return
+
+            response = "**Locked Users in This Chat**\n\n"
+
+            for user_id, data in locked_users.items():
+                try:
+                    user_entity = await self.client.get_entity(user_id)
+                    username = f"@{user_entity.username}" if user_entity.username else f"User {user_id}"
+                    name = user_entity.first_name or "Unknown"
+                except:
+                    username = f"User {user_id}"
+                    name = "Unknown"
+
+                reason = data.get('reason', 'No reason')
+                response += f"• **{name}** ({username})\n  Reason: {reason}\n\n"
+
+            response += f"**Total:** {len(locked_users)} user(s) locked"
+
+            await message.reply(response)
+
+        except Exception as e:
+            logger.error(f"Error in locklist command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}")
 
 
 async def main():
