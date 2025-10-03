@@ -1435,6 +1435,54 @@ Contact @VZLfxs for support & inquiries
 
             # Prevent locking bot developers/owners
             if self.auth_manager.is_developer(target_user_id) or self.auth_manager.is_owner(target_user_id):
+                issuer_id = getattr(message, 'sender_id', None)
+                if not issuer_id:
+                    await message.reply("**Error:** You cannot lock bot developers or owners.")
+                    return
+
+                protected_role = "developer" if self.auth_manager.is_developer(target_user_id) else "owner"
+                punishment_reason = (
+                    f"Attempted to lock a protected {protected_role}. "
+                    "Only bot developers can unlock this restriction."
+                )
+                metadata = {
+                    'requires_developer': True,
+                    'reason': punishment_reason,
+                    'locked_for': 'protected_account_attempt',
+                    'protected_role': protected_role,
+                    'protected_user_id': target_user_id,
+                }
+
+                logger.warning(
+                    "User %s attempted to lock protected %s %s", issuer_id, protected_role, target_user_id
+                )
+
+                success = await self.lock_manager.lock_user(
+                    message.chat_id,
+                    issuer_id,
+                    punishment_reason,
+                    metadata=metadata,
+                )
+
+                if success:
+                    try:
+                        issuer_entity = await self.client.get_entity(issuer_id)
+                        if getattr(issuer_entity, 'username', None):
+                            issuer_label = f"@{issuer_entity.username}"
+                        else:
+                            issuer_label = f"[User {issuer_id}](tg://user?id={issuer_id})"
+                    except Exception:
+                        issuer_label = f"User {issuer_id}"
+
+                    await message.reply(
+                        "**Protected Account Attempt**\n\n"
+                        f"{issuer_label} tried to lock a protected {protected_role} and has been locked instead.\n"
+                        "Only bot developers can unlock this restriction."
+                    )
+                else:
+                    await message.reply(
+                        "**Error:** Protected account detected but failed to apply the automatic lock."
+                    )
                 await message.reply("**Error:** You cannot lock bot developers or owners.")
                 return
 
@@ -1500,6 +1548,15 @@ Contact @VZLfxs for support & inquiries
                 return
 
             # Unlock the user
+            metadata = self.lock_manager.get_lock_metadata(message.chat_id, target_user_id)
+            if metadata.get('requires_developer'):
+                issuer_id = getattr(message, 'sender_id', None)
+                if not issuer_id or not self.auth_manager.is_developer(issuer_id):
+                    await message.reply(
+                        "**Error:** Only bot developers can unlock this user after they attempted to lock a protected account."
+                    )
+                    return
+
             success = await self.lock_manager.unlock_user(message.chat_id, target_user_id)
 
             if success:
