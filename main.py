@@ -237,9 +237,9 @@ class VBot:
             # Help main callback
             if data == "help_main":
                 help_text = """
-📚 **VBot Command Reference**
+**VBot Command Reference**
 
-**🎵 Music Commands:**
+**Music Commands:**
 • `/play <query>` - Play audio (YouTube/Spotify)
 • `/vplay <query>` - Play video
 • `/pause` - Pause playback
@@ -252,7 +252,7 @@ class VBot:
 • `/seek <seconds>` - Jump to position
 • `/volume <0-200>` - Adjust volume
 
-**👥 Group Management:**
+**Group Management:**
 • `/pm @user <title>` - Promote to admin
 • `/dm @user` - Demote from admin
 • `/tagall <text>` - Tag all members
@@ -261,19 +261,19 @@ class VBot:
 • `/unlock @user` - Unlock user
 • `/locklist` - Show locked users
 
-**🔧 Bot Commands:**
+**Bot Commands:**
 • `/start` - Start bot & main menu
 • `/help` - This help message
 • `/about` - Bot information
 • `/ping` - Check bot status
 • `/gensession` - Generate session string
 
-**ℹ️ Prefix Info:**
+**Prefix Info:**
 • `/` - Public commands (available to all)
 • `+` - Owner commands (developer only)
 • `.` - Admin commands
 
-📱 **VBot Python v2.0.0**
+**VBot Python v2.0.0**
 By Vzoel Fox's
 """
                 await event.edit(VBotBranding.wrap_message(help_text, include_footer=False))
@@ -283,7 +283,7 @@ By Vzoel Fox's
                 await event.answer("Loading about info...")
                 me = await self.client.get_me()
                 about_text = f"""
-ℹ️ **About VBot Music Bot**
+**About VBot Music Bot**
 
 **Bot Info:**
 • Name: {me.first_name}
@@ -291,12 +291,12 @@ By Vzoel Fox's
 • Version: 2.0.0 Python
 
 **Features:**
-🎵 Multi-platform music (YouTube/Spotify)
-🎬 Video streaming support
-📋 Smart queue management
-👥 Admin & group controls
-🔐 Session generator
-🔒 Lock & privacy system
+• Multi-platform music (YouTube/Spotify)
+• Video streaming support
+• Smart queue management
+• Admin & group controls
+• Session generator
+• Lock & privacy system
 
 **Technology:**
 • Python 3.x
@@ -305,10 +305,10 @@ By Vzoel Fox's
 • yt-dlp (Download)
 
 **Developer:**
-👨‍💻 Vzoel Fox's
-📱 Contact: @VzoelFoxs
+• Vzoel Fox's
+• Contact: @VzoelFoxs
 
-📱 **VBot Python v2.0.0**
+**VBot Python v2.0.0**
 """
                 await event.edit(VBotBranding.wrap_message(about_text, include_footer=False))
 
@@ -316,19 +316,19 @@ By Vzoel Fox's
             elif data == "start_gensession":
                 # Check if in private chat
                 if not event.is_private:
-                    await event.answer("⚠️ Session generator hanya bisa di private chat!", alert=True)
+                    await event.answer("Session generator hanya bisa di private chat!", alert=True)
                     return
 
                 # Redirect to /gensession command
                 me = await self.client.get_me()
                 await event.answer("Starting session generator...")
                 redirect_text = (
-                    "🔐 **Session String Generator**\n\n"
+                    "**Session String Generator**\n\n"
                     "Untuk memulai, silakan ketik:\n"
                     "`/gensession`\n\n"
                     "atau klik tombol di bawah untuk memulai."
                 )
-                buttons = [[Button.inline("🔐 Start Generator", b"run_gensession")]]
+                buttons = [[Button.inline("Start Generator", b"run_gensession")]]
                 await event.edit(redirect_text, buttons=buttons)
 
             # Run session generator
@@ -339,14 +339,14 @@ By Vzoel Fox's
                     # Trigger the generator
                     await event.respond("/gensession")
                 else:
-                    await event.answer("⚠️ Session generator plugin tidak aktif!", alert=True)
+                    await event.answer("Session generator plugin tidak aktif!", alert=True)
 
             else:
                 await event.answer("Unknown callback")
 
         except Exception as e:
             logger.error(f"Error handling callback: {e}")
-            await event.answer("❌ Error processing request", alert=True)
+            await event.answer("Error processing request", alert=True)
 
     async def _handle_command(self, message):
         """Handle bot commands"""
@@ -526,28 +526,19 @@ By Vzoel Fox's
 
             else:
                 # Unknown command
-                await message.reply(f"❓ Unknown command: {command}\n\nType /start to see available commands.")
+                await message.reply(f"Unknown command: {command}\n\nType /start to see available commands.")
 
         except Exception as e:
             logger.error(f"Error routing command {command}: {e}")
             await message.reply(VBotBranding.format_error(f"Command error: {str(e)}"))
 
     async def _run_command_edit_phases(self, message, command):
-        """Display a 12-phase status update for any command"""
-        command_name = command.lstrip('/+.#') or command
+        """Display a simple 4-phase status update for any command"""
         phases = [
-            f"⚙️ {command_name.title()} • Phase 1/12 – Initializing",
-            f"⚙️ {command_name.title()} • Phase 2/12 – Authorizing",
-            f"⚙️ {command_name.title()} • Phase 3/12 – Preparing context",
-            f"⚙️ {command_name.title()} • Phase 4/12 – Syncing data",
-            f"⚙️ {command_name.title()} • Phase 5/12 – Gathering resources",
-            f"⚙️ {command_name.title()} • Phase 6/12 – Processing",
-            f"⚙️ {command_name.title()} • Phase 7/12 – Validating",
-            f"⚙️ {command_name.title()} • Phase 8/12 – Optimizing",
-            f"⚙️ {command_name.title()} • Phase 9/12 – Final checks",
-            f"⚙️ {command_name.title()} • Phase 10/12 – Formatting output",
-            f"⚙️ {command_name.title()} • Phase 11/12 – Polishing response",
-            f"✅ {command_name.title()} • Phase 12/12 – Ready",
+            "wait..",
+            "processing..",
+            "initializing..",
+            "ok...",
         ]
 
         try:
@@ -557,7 +548,7 @@ By Vzoel Fox's
             return None
 
         for phase_text in phases[1:]:
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.5)
             try:
                 await status_message.edit(phase_text)
             except Exception as edit_error:
@@ -607,7 +598,7 @@ By Vzoel Fox's
             uptime_text = self._format_timedelta(now - self.start_time)
 
         result_lines = [
-            "🏓 **Pong!**",
+            "**Pong!**",
             f"**Latency:** `{latency_ms:.2f} ms`",
         ]
 
@@ -636,9 +627,9 @@ By Vzoel Fox's
 
             # Build welcome message
             welcome_text = f"""
-👋 **Welcome to {me.first_name}!**
+**Welcome to {me.first_name}!**
 
-🎵 **VBot Music Bot** - Full-featured Telegram music bot
+**VBot Music Bot** - Full-featured Telegram music bot
 
 **Quick Start:**
 • `/play <query>` - Play audio from YouTube/Spotify
@@ -647,16 +638,16 @@ By Vzoel Fox's
 • `/help` - Show all commands
 
 **Features:**
-✅ YouTube & Spotify support
-✅ Voice chat streaming
-✅ Queue management
-✅ Admin controls
-✅ Session generator
+• YouTube & Spotify support
+• Voice chat streaming
+• Queue management
+• Admin controls
+• Session generator
 
 **Get Started:**
 Type `/help` for complete command list or just send a song name!
 
-📱 **VBot Python v2.0.0**
+**VBot Python v2.0.0**
 By Vzoel Fox's
 """
 
@@ -665,19 +656,19 @@ By Vzoel Fox's
                 # Private chat buttons: Generate String, Add to Group, Help
                 buttons = [
                     [
-                        Button.inline("🔐 Generate String", b"start_gensession"),
+                        Button.inline("Generate String", b"start_gensession"),
                     ],
                     [
-                        Button.url("➕ Add to Group", f"https://t.me/{bot_username}?startgroup=true"),
-                        Button.inline("📚 Help", b"help_main")
+                        Button.url("Add to Group", f"https://t.me/{bot_username}?startgroup=true"),
+                        Button.inline("Help", b"help_main")
                     ]
                 ]
             else:
                 # Group chat buttons: VBot by Vzoel Fox's, Help
                 buttons = [
                     [
-                        Button.url("🤖 VBot by Vzoel Fox's", "https://t.me/VzoelFoxs"),
-                        Button.inline("📚 Help", b"help_main")
+                        Button.url("VBot by Vzoel Fox's", "https://t.me/VzoelFoxs"),
+                        Button.inline("Help", b"help_main")
                     ]
                 ]
 
@@ -688,15 +679,15 @@ By Vzoel Fox's
 
         except Exception as e:
             logger.error(f"Error in start command: {e}")
-            await message.reply("👋 Welcome to VBot!\n\nType /help for commands.")
+            await message.reply("Welcome to VBot!\n\nType /help for commands.")
 
     async def _handle_help_command(self, message):
         """Handle /help command - show all commands"""
         try:
             help_text = """
-📚 **VBot Command Reference**
+**VBot Command Reference**
 
-**🎵 Music Commands:**
+**Music Commands:**
 • `/play <query>` - Play audio (YouTube/Spotify)
 • `/vplay <query>` - Play video
 • `/pause` - Pause playback
@@ -709,7 +700,7 @@ By Vzoel Fox's
 • `/seek <seconds>` - Jump to position
 • `/volume <0-200>` - Adjust volume
 
-**👥 Group Management:**
+**Group Management:**
 • `/pm @user <title>` - Promote to admin
 • `/dm @user` - Demote from admin
 • `/tagall <text>` - Tag all members
@@ -718,14 +709,14 @@ By Vzoel Fox's
 • `/unlock @user` - Unlock user
 • `/locklist` - Show locked users
 
-**🔧 Bot Commands:**
+**Bot Commands:**
 • `/start` - Start bot & main menu
 • `/help` - This help message
 • `/about` - Bot information
 • `/ping` - Check bot status
 • `/gensession` - Generate session string
 
-**ℹ️ Prefix Info:**
+**Prefix Info:**
 • `/` - Public commands (available to all)
 • `+` - Owner/Developer commands
 • `.` - Admin commands
@@ -739,7 +730,7 @@ Type any command for usage help!
 
         except Exception as e:
             logger.error(f"Error in help command: {e}")
-            await message.reply("📚 Help system error. Please contact support.")
+            await message.reply("Help system error. Please contact support.")
 
     async def _handle_about_command(self, message):
         """Handle /about command - show bot info"""
