@@ -57,7 +57,6 @@ class VBot:
 
     def __init__(self):
         self.client = None
-        self.assistant_client = None  # Assistant for voice chat streaming
         self.music_manager = None  # Will be initialized after client
 
         # Initialize database (core persistence layer)
@@ -113,25 +112,11 @@ class VBot:
             }
             await vbot_logger.log_startup(bot_info)
 
-            logger.info(f"🎵 VBot started successfully!")
+            logger.info(f"VBot started successfully!")
             logger.info(f"Bot: {me.first_name} (@{me.username})")
 
-            # Initialize Assistant Client (for voice chat streaming)
-            if config.STRING_SESSION and config.STRING_SESSION.strip():
-                try:
-                    logger.info("🔄 Initializing assistant client for voice chat streaming...")
-                    self.assistant_client = TelegramClient(
-                        StringSession(config.STRING_SESSION),
-                        config.API_ID,
-                        config.API_HASH
-                    )
-                    await self.assistant_client.start()
-                except Exception as exc:
-                    logger.error(f"Failed to initialize assistant client: {exc}")
-                    self.assistant_client = None
-
-            # Initialize Music Manager
-            self.music_manager = MusicManager(self.client, self.assistant_client)
+            # Initialize Music Manager (without assistant client)
+            self.music_manager = MusicManager(self.client, None)
 
             # Register handlers
             self.client.add_event_handler(self._handle_message, events.NewMessage)
