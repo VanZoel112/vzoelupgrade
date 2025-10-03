@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +87,8 @@ class VBot:
         )
         self._help_pages = self._build_help_pages()
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
+        self._admin_sync_cache: Dict[int, float] = {}
+        self._admin_sync_interval = getattr(config, "GROUP_ADMIN_SYNC_INTERVAL", 600)
 
     async def initialize(self):
         """Initialize VBot"""
@@ -347,13 +350,22 @@ class VBot:
                 command = command.split('@')[0]
                 command_parts[0] = command
 
+            command_type = self.auth_manager.get_command_type(command_text)
+
+            # Keep admin snapshots fresh so each group maintains its own list
+            if (
+                command_type == "admin"
+                and (message.is_group or message.is_channel)
+                and message.chat_id is not None
+            ):
+                await self._ensure_group_admin_sync(message.chat_id)
+
             # Check permissions
             has_permission = await self.auth_manager.check_permissions(
                 self.client, message.sender_id, message.chat_id, command_text
             )
 
             if not has_permission:
-                command_type = self.auth_manager.get_command_type(command_text)
                 error_msg = self.auth_manager.get_permission_error_message(command_type)
 
                 # Log failed permission check
@@ -381,6 +393,24 @@ class VBot:
                 command_status = self._command_context.get(message_id)
                 if command_status:
                     command_status.status_message = status_message
+
+            # Persist confirmed admins after successful permission check
+            if (
+                command_type == "admin"
+                and (message.is_group or message.is_channel)
+                and message.chat_id is not None
+            ):
+                try:
+                    if await self.auth_manager.is_admin_in_chat(
+                        self.client, message.sender_id, message.chat_id
+                    ):
+                        self.database.add_group_admin(message.chat_id, message.sender_id)
+                except Exception as perm_error:
+                    logger.debug(
+                        "Failed to refresh admin cache for chat %s: %s",
+                        message.chat_id,
+                        perm_error,
+                    )
 
             # Route commands
             await self._route_command(message, command, command_parts)
@@ -1606,6 +1636,8 @@ Contact @VZLfxs for support & inquiries
                 rank=title[:16]  # Max 16 characters for title
             ))
 
+            await self._ensure_group_admin_sync(message.chat_id, force=True)
+
             try:
                 user_entity = await self.client.get_entity(target_user_id)
                 username = f"@{user_entity.username}" if user_entity.username else f"User {target_user_id}"
@@ -1692,6 +1724,8 @@ Contact @VZLfxs for support & inquiries
                 rank=""
             ))
 
+            await self._ensure_group_admin_sync(message.chat_id, force=True)
+
             try:
                 user_entity = await self.client.get_entity(target_user_id)
                 username = f"@{user_entity.username}" if user_entity.username else f"User {target_user_id}"
@@ -1710,9 +1744,124 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Error in demote command: {e}", exc_info=True)
             await message.reply(f"**Error:** {str(e)}\n\nMake sure bot has admin rights to demote users.")
 
+    async def _ensure_group_admin_sync(self, chat_id: int, *, force: bool = False) -> None:
+        """Refresh stored admin list for a chat when the cache expires."""
+
+        if not chat_id:
+            return
+
+        now = time.monotonic()
+        last_sync = self._admin_sync_cache.get(chat_id)
+        if not force and last_sync is not None and (now - last_sync) < self._admin_sync_interval:
+            return
+
+        admin_entities: List[Any] = []
+        try:
+            async for participant in self.client.iter_participants(
+                chat_id,
+                filter=types.ChannelParticipantsAdmins(),
+            ):
+                if participant:
+                    admin_entities.append(participant)
+        except Exception as iter_error:
+            logger.debug(
+                "iter_participants admin sync failed for chat %s: %s",
+                chat_id,
+                iter_error,
+            )
+            try:
+                fetched = await self.client.get_participants(
+                    chat_id, filter=types.ChannelParticipantsAdmins()
+                )
+                admin_entities.extend(fetched)
+            except Exception as fetch_error:
+                logger.warning(
+                    "Unable to fetch admin list for chat %s: %s",
+                    chat_id,
+                    fetch_error,
+                )
+                return
+
+        admin_ids = {
+            getattr(entity, "id", None)
+            for entity in admin_entities
+            if getattr(entity, "id", None)
+        }
+
+        if not admin_ids:
+            logger.debug(
+                "Admin sync yielded empty list for chat %s; keeping previous data",
+                chat_id,
+            )
+            self._admin_sync_cache[chat_id] = now
+            return
+
+        existing = set(self.database.get_group_admins(chat_id))
+
+        for user_id in admin_ids - existing:
+            self.database.add_group_admin(chat_id, user_id)
+
+        for user_id in existing - admin_ids:
+            self.database.remove_group_admin(chat_id, user_id)
+
+        self._admin_sync_cache[chat_id] = now
+
+    @staticmethod
+    def _format_admin_entry(entity: Any) -> str:
+        """Return a readable label for an admin entity."""
+
+        user_id = getattr(entity, "id", None)
+        username = getattr(entity, "username", None)
+        first_name = getattr(entity, "first_name", "") or ""
+        last_name = getattr(entity, "last_name", "") or ""
+        full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+
+        if username and full_name:
+            return f"{full_name} (@{username})"
+        if username:
+            return f"@{username}"
+        if full_name:
+            return f"{full_name} (`{user_id}`)"
+        return f"`User {user_id}`"
+
     async def _handle_adminlist_command(self, message):
-        """Handle /adminlist command - stub"""
-        await message.reply("🚧 **Admin list under development**\n\nComing soon!")
+        """Handle /adminlist command - show tracked admins for this group."""
+
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Perintah ini hanya tersedia di grup.**")
+            return
+
+        chat_id = message.chat_id
+        if chat_id is None:
+            await message.reply("Tidak dapat menentukan grup saat ini.")
+            return
+
+        await self._ensure_group_admin_sync(chat_id, force=True)
+
+        admin_ids = self.database.get_group_admins(chat_id)
+        if not admin_ids:
+            await message.reply(
+                "⚠️ **Belum ada admin yang tercatat untuk grup ini.**\n"
+                "Gunakan perintah admin sekali agar bot dapat menyinkronkan daftar."
+            )
+            return
+
+        admin_lines: List[str] = []
+        for index, user_id in enumerate(admin_ids, start=1):
+            try:
+                entity = await self.client.get_entity(user_id)
+                admin_lines.append(f"{index}. {self._format_admin_entry(entity)}")
+            except Exception as fetch_error:
+                logger.debug(
+                    "Unable to resolve admin %s in chat %s: %s",
+                    user_id,
+                    chat_id,
+                    fetch_error,
+                )
+                admin_lines.append(f"{index}. `User {user_id}`")
+
+        header = "**Daftar Admin Grup**"
+        await message.reply(f"{header}\n\n" + "\n".join(admin_lines))
 
     async def _handle_add_permission_command(self, message, parts):
         """Handle +add command - stub"""
