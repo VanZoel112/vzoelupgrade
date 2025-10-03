@@ -17,6 +17,14 @@ import config
 logger = logging.getLogger(__name__)
 
 
+class _ConfiguredAdminPermissions:
+    """Synthetic permissions object for ADMIN_CHAT_IDS override."""
+
+    is_admin = True
+    is_creator = False
+    add_admins = True
+
+
 class AuthManager:
     """Centralized authorization helper."""
 
@@ -25,6 +33,7 @@ class AuthManager:
         self.developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
         self.admin_chat_ids = set(getattr(config, "ADMIN_CHAT_IDS", []) or [])
         self.enable_public: bool = getattr(config, "ENABLE_PUBLIC_COMMANDS", True)
+        self._last_denied_reason: Optional[str] = None
 
     # ------------------------------------------------------------------ #
     # Basic checks
@@ -38,16 +47,32 @@ class AuthManager:
 
     async def is_admin_in_chat(self, client, user_id: int, chat_id: int) -> bool:
         """Check if user is admin in a chat."""
-        try:
-            # Fast path: configured admin chats allow all members
-            if chat_id in self.admin_chat_ids:
-                return True
-
-            # Telethon permission check
-            perms = await client.get_permissions(chat_id, user_id)
-            return bool(getattr(perms, "is_admin", False) or getattr(perms, "is_creator", False))
-        except Exception:
+        perms = await self._get_chat_permissions(client, user_id, chat_id)
+        if not perms:
             return False
+
+        return bool(getattr(perms, "is_admin", False) or getattr(perms, "is_creator", False))
+
+    async def _get_chat_permissions(self, client, user_id: int, chat_id: int):
+        """Retrieve permissions for the user in the given chat."""
+        if not chat_id:
+            return None
+
+        # Fast path: configured admin chats allow all members
+        if chat_id in self.admin_chat_ids:
+            return _ConfiguredAdminPermissions()
+
+        try:
+            return await client.get_permissions(chat_id, user_id)
+        except Exception:
+            logger.debug("Failed to fetch chat permissions", exc_info=True)
+            return None
+
+    def _reset_denied_reason(self):
+        self._last_denied_reason = None
+
+    def _set_denied_reason(self, reason: str):
+        self._last_denied_reason = reason
 
     # ------------------------------------------------------------------ #
     # High-level authorization rules
@@ -57,11 +82,37 @@ class AuthManager:
         """Owner-level commands (prefix '+')"""
         return self.is_owner(user_id) or self.is_developer(user_id)
 
-    async def can_use_admin_command(self, client, user_id: int, chat_id: int) -> bool:
+    async def can_use_admin_command(
+        self,
+        client,
+        user_id: int,
+        chat_id: int,
+        *,
+        require_manage_admins: bool = False,
+    ) -> bool:
         """Admin-level commands (prefix '/')"""
-        if self.is_owner(user_id) or self.is_developer(user_id):
-            return True
-        return await self.is_admin_in_chat(client, user_id, chat_id)
+        perms = await self._get_chat_permissions(client, user_id, chat_id)
+
+        if perms is None:
+            self._set_denied_reason("permissions_unavailable")
+            return False
+
+        is_creator = bool(getattr(perms, "is_creator", False))
+        is_admin = bool(getattr(perms, "is_admin", False) or is_creator)
+
+        if not is_admin:
+            # Owners/developers may bypass chat admin check when configured
+            if self.is_owner(user_id) or self.is_developer(user_id):
+                return True
+
+            self._set_denied_reason("not_chat_admin")
+            return False
+
+        if require_manage_admins and not (is_creator or getattr(perms, "add_admins", False)):
+            self._set_denied_reason("add_admins_required")
+            return False
+
+        return True
 
     async def can_use_public_command(self, user_id: int) -> bool:
         """Public commands (prefix '.')"""
@@ -93,12 +144,23 @@ class AuthManager:
         if cmd in music_commands or cmd in public_slash_commands:
             return True
 
+        require_manage_admins = cmd in {'/pm', '/dm'}
+
+        self._reset_denied_reason()
         command_type = self.get_command_type(command_text)
 
         if command_type == "owner":
             return await self.can_use_owner_command(user_id)
         elif command_type == "admin":
-            return await self.can_use_admin_command(client, user_id, chat_id)
+            allowed = await self.can_use_admin_command(
+                client,
+                user_id,
+                chat_id,
+                require_manage_admins=require_manage_admins,
+            )
+            if not allowed and require_manage_admins and self._last_denied_reason is None:
+                self._set_denied_reason("add_admins_required")
+            return allowed
         elif command_type == "public":
             return await self.can_use_public_command(user_id)
 
@@ -111,6 +173,12 @@ class AuthManager:
 
     def get_permission_error_message(self, command_type: str) -> str:
         """Get appropriate error message for permission denial."""
+        if self._last_denied_reason == "add_admins_required":
+            return "Access denied. This command requires Add Admins permission in this group."
+        if self._last_denied_reason == "not_chat_admin":
+            return "Access denied. Only group administrators can use this command."
+        if self._last_denied_reason == "permissions_unavailable":
+            return "Access denied. Unable to verify your admin permissions in this chat."
         if command_type == "owner":
             return "Access denied. Owner-level authorization required."
         elif command_type == "admin":
