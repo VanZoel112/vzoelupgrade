@@ -697,9 +697,197 @@ Contact @VZLfxs for support & inquiries
 
             # Show animated processing message
             media_type = "audio" if audio_only else "video"
-            # (implementation continues…)
+            status_msg = await message.reply(f"🔍 Searching for {media_type}...")
+
+            # Delegate to music manager
+            result = await self.music_manager.handle_play(
+                message.chat_id,
+                query,
+                audio_only=audio_only,
+                requester_id=message.sender_id
+            )
+
+            await status_msg.edit(result)
+
         except Exception as e:
+            logger.error(f"Music command error: {e}", exc_info=True)
             await message.reply(VBotBranding.format_error(f"Music error: {e}"))
+
+    async def _handle_pause_command(self, message):
+        """Handle /pause command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            result = await self.music_manager.pause(message.chat_id)
+            await message.reply(result)
+        except Exception as e:
+            logger.error(f"Pause error: {e}")
+            await message.reply(f"❌ Pause failed: {str(e)}")
+
+    async def _handle_resume_command(self, message):
+        """Handle /resume command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            result = await self.music_manager.resume(message.chat_id)
+            await message.reply(result)
+        except Exception as e:
+            logger.error(f"Resume error: {e}")
+            await message.reply(f"❌ Resume failed: {str(e)}")
+
+    async def _handle_skip_command(self, message):
+        """Handle /skip command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            result = await self.music_manager.skip(message.chat_id)
+            await message.reply(result)
+        except Exception as e:
+            logger.error(f"Skip error: {e}")
+            await message.reply(f"❌ Skip failed: {str(e)}")
+
+    async def _handle_stop_command(self, message):
+        """Handle /stop command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            result = await self.music_manager.stop(message.chat_id)
+            await message.reply(result)
+        except Exception as e:
+            logger.error(f"Stop error: {e}")
+            await message.reply(f"❌ Stop failed: {str(e)}")
+
+    async def _handle_queue_command(self, message):
+        """Handle /queue command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            result = await self.music_manager.show_queue(message.chat_id)
+            await message.reply(result)
+        except Exception as e:
+            logger.error(f"Queue error: {e}")
+            await message.reply(f"❌ Queue error: {str(e)}")
+
+    async def _handle_shuffle_command(self, message):
+        """Handle /shuffle command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            result = await self.music_manager.shuffle(message.chat_id)
+            await message.reply(result)
+        except Exception as e:
+            logger.error(f"Shuffle error: {e}")
+            await message.reply(f"❌ Shuffle failed: {str(e)}")
+
+    async def _handle_loop_command(self, message, parts):
+        """Handle /loop command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            mode = parts[1].lower() if len(parts) > 1 else "toggle"
+            result = await self.music_manager.set_loop(message.chat_id, mode)
+            await message.reply(result)
+        except Exception as e:
+            logger.error(f"Loop error: {e}")
+            await message.reply(f"❌ Loop error: {str(e)}")
+
+    async def _handle_seek_command(self, message, parts):
+        """Handle /seek command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            if len(parts) < 2:
+                await message.reply("**Usage:** `/seek <seconds>`\n\n**Example:** `/seek 60`")
+                return
+
+            seconds = int(parts[1])
+            result = await self.music_manager.seek(message.chat_id, seconds)
+            await message.reply(result)
+        except ValueError:
+            await message.reply("❌ Invalid number! Use: `/seek <seconds>`")
+        except Exception as e:
+            logger.error(f"Seek error: {e}")
+            await message.reply(f"❌ Seek failed: {str(e)}")
+
+    async def _handle_volume_command(self, message, parts):
+        """Handle /volume command"""
+        if not self.music_manager:
+            await message.reply("❌ Music system not initialized")
+            return
+
+        try:
+            if len(parts) < 2:
+                await message.reply("**Usage:** `/volume <0-200>`\n\n**Example:** `/volume 100`")
+                return
+
+            volume = int(parts[1])
+            if not 0 <= volume <= 200:
+                await message.reply("❌ Volume must be between 0-200!")
+                return
+
+            result = await self.music_manager.set_volume(message.chat_id, volume)
+            await message.reply(result)
+        except ValueError:
+            await message.reply("❌ Invalid number! Use: `/volume <0-200>`")
+        except Exception as e:
+            logger.error(f"Volume error: {e}")
+            await message.reply(f"❌ Volume error: {str(e)}")
+
+    async def _handle_promote_command(self, message, parts):
+        """Handle /pm (promote) command - stub"""
+        await message.reply("🚧 **Promote command under development**\n\nComing soon!")
+
+    async def _handle_demote_command(self, message, parts):
+        """Handle /dm (demote) command - stub"""
+        await message.reply("🚧 **Demote command under development**\n\nComing soon!")
+
+    async def _handle_adminlist_command(self, message):
+        """Handle /adminlist command - stub"""
+        await message.reply("🚧 **Admin list under development**\n\nComing soon!")
+
+    async def _handle_add_permission_command(self, message, parts):
+        """Handle +add command - stub"""
+        await message.reply("🚧 **Add permission under development**\n\nComing soon!")
+
+    async def _handle_del_permission_command(self, message, parts):
+        """Handle +del command - stub"""
+        await message.reply("🚧 **Del permission under development**\n\nComing soon!")
+
+    async def _handle_setwelcome_command(self, message, parts):
+        """Handle +setwelcome command - stub"""
+        await message.reply("🚧 **Set welcome under development**\n\nComing soon!")
+
+    async def _handle_backup_command(self, message, parts):
+        """Handle +backup command - stub"""
+        await message.reply("🚧 **Backup command under development**\n\nComing soon!")
+
+    async def _handle_lock_command(self, message, parts):
+        """Handle /lock command - stub"""
+        await message.reply("🚧 **Lock command under development**\n\nUse lock_manager module. Coming soon!")
+
+    async def _handle_unlock_command(self, message, parts):
+        """Handle /unlock command - stub"""
+        await message.reply("🚧 **Unlock command under development**\n\nComing soon!")
+
+    async def _handle_locklist_command(self, message):
+        """Handle /locklist command - stub"""
+        await message.reply("🚧 **Lock list under development**\n\nComing soon!")
 
 
 async def main():
