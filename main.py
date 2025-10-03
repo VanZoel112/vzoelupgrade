@@ -132,6 +132,7 @@ class VBot:
 
             # Initialize Music Manager
             self.music_manager = MusicManager(self.client, self.assistant_client)
+            await self.music_manager.start()
 
             # Register handlers
             self.client.add_event_handler(self._handle_message, events.NewMessage)
@@ -836,19 +837,48 @@ Contact @VZLfxs for support & inquiries
 
             # Format result message
             if result.get('success'):
+                song_info = result.get('song', {})
                 if result.get('queued'):
                     response = f"**Added to queue (Position {result['position']})**\n\n"
-                    response += f"**Title:** {result['song'].get('title', 'Unknown')}\n"
-                    response += f"**Duration:** {result['song'].get('duration_string', 'Unknown')}"
+                    response += f"**Title:** {song_info.get('title', 'Unknown')}\n"
+                    response += f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
                 else:
                     response = f"**Now Playing**\n\n"
-                    response += f"**Title:** {result['song'].get('title', 'Unknown')}\n"
-                    response += f"**Duration:** {result['song'].get('duration_string', 'Unknown')}"
+                    response += f"**Title:** {song_info.get('title', 'Unknown')}\n"
+                    response += f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
 
                 if result.get('streaming'):
                     response += f"\n**Mode:** Streaming"
+                    await status_msg.edit(response)
+                else:
+                    response += f"\n**Mode:** Download"
+                    await status_msg.edit(response)
 
-                await status_msg.edit(response)
+                    file_path = result.get('file_path')
+                    if file_path:
+                        caption_lines = [
+                            f"**Title:** {song_info.get('title', 'Unknown')}",
+                            f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
+                        ]
+                        uploader = song_info.get('uploader')
+                        if uploader:
+                            caption_lines.append(f"**Uploader:** {uploader}")
+                        caption = "\n".join(caption_lines)
+
+                        try:
+                            await self.client.send_file(
+                                message.chat_id,
+                                file_path,
+                                caption=VBotBranding.wrap_message(caption, include_footer=False),
+                                force_document=False,
+                                supports_streaming=True
+                            )
+                        except Exception as send_error:
+                            logger.error(f"Failed to send media file: {send_error}")
+                            await self.client.send_message(
+                                message.chat_id,
+                                VBotBranding.format_error(f"Gagal mengirim file: {send_error}")
+                            )
             else:
                 error_msg = result.get('error', 'Unknown error')
                 await status_msg.edit(f"**Error:** {error_msg}")
