@@ -13,21 +13,23 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from logging.handlers import RotatingFileHandler
 from typing import Optional, Dict, Any
-import aiosqlite
 
-# Telegram log group ID
-LOG_GROUP_ID = -4775943821
+import aiosqlite
+from telethon.errors import RPCError
+
+import config
 
 class TelegramLogHandler(logging.Handler):
     """Send logs to Telegram group in real-time"""
 
-    def __init__(self, client, log_group_id: int = LOG_GROUP_ID, level=logging.WARNING):
+    def __init__(self, client, log_group_id: int, level=logging.WARNING):
         super().__init__(level)
         self.client = client
         self.log_group_id = log_group_id
         self._running = False
+        self._reported_failure = False
 
     def emit(self, record):
         """Send log record to Telegram"""
@@ -77,7 +79,10 @@ class TelegramLogHandler(logging.Handler):
             )
 
         except Exception as e:
-            print(f"Failed to send log to Telegram: {e}")
+            self._running = False
+            if not self._reported_failure:
+                self._reported_failure = True
+                print(f"Failed to send log to Telegram: {e}. Disabling Telegram log handler.")
 
     def start(self):
         """Start the handler"""
@@ -254,10 +259,15 @@ class VBotLogger:
         console_handler.setFormatter(console_formatter)
         self.logger.addHandler(console_handler)
 
-    def setup_telegram_handler(self, client, log_group_id: int = LOG_GROUP_ID):
+    def setup_telegram_handler(self, client, log_group_id: Optional[int]):
         """Setup Telegram log handler"""
         if self.telegram_handler:
             self.logger.removeHandler(self.telegram_handler)
+            self.telegram_handler = None
+
+        if not log_group_id:
+            self.logger.info("📵 Telegram logging disabled (no valid LOG_CHAT_ID)")
+            return
 
         self.telegram_handler = TelegramLogHandler(client, log_group_id, level=logging.WARNING)
 
@@ -268,7 +278,7 @@ class VBotLogger:
         self.telegram_handler.start()
 
         self.logger.addHandler(self.telegram_handler)
-        self.logger.info(f"📱 Telegram logging enabled for group {log_group_id}")
+        self.logger.info(f"📱 Telegram logging enabled for chat {log_group_id}")
 
     def setup_sql_handler(self, db_path: str = "data/logs.db"):
         """Setup SQL database log handler"""
@@ -324,7 +334,7 @@ class VBotLogger:
 
             try:
                 await self.telegram_handler.client.send_message(
-                    LOG_GROUP_ID,
+                    self.telegram_handler.log_group_id,
                     detailed_error[:4000]
                 )
             except:
@@ -344,7 +354,7 @@ class VBotLogger:
         if self.telegram_handler:
             try:
                 await self.telegram_handler.client.send_message(
-                    LOG_GROUP_ID,
+                    self.telegram_handler.log_group_id,
                     startup_msg
                 )
             except:
@@ -363,7 +373,7 @@ class VBotLogger:
         if self.telegram_handler:
             try:
                 await self.telegram_handler.client.send_message(
-                    LOG_GROUP_ID,
+                    self.telegram_handler.log_group_id,
                     shutdown_msg
                 )
             except:
@@ -389,10 +399,50 @@ def get_logger(name: str = "VBot") -> logging.Logger:
     return logging.getLogger(name)
 
 
+async def _resolve_log_chat_id(client) -> Optional[int]:
+    """Validate configured LOG_CHAT_ID and return a usable chat ID."""
+    raw_value = getattr(config, "LOG_CHAT_ID", 0)
+
+    try:
+        chat_id = int(raw_value)
+    except (TypeError, ValueError):
+        vbot_logger.get_logger().warning(
+            "LOG_CHAT_ID must be an integer, received %r. Telegram logging disabled.",
+            raw_value,
+        )
+        return None
+
+    if chat_id == 0:
+        return None
+
+    candidates = [chat_id]
+    if chat_id < 0:
+        chat_id_str = str(chat_id)
+        if not chat_id_str.startswith("-100"):
+            prefixed = int("-100" + chat_id_str.lstrip("-"))
+            if prefixed not in candidates:
+                candidates.append(prefixed)
+
+    for candidate in candidates:
+        try:
+            await client.get_entity(candidate)
+            return candidate
+        except (RPCError, ValueError, TypeError):
+            continue
+
+    vbot_logger.get_logger().warning(
+        "Unable to access LOG_CHAT_ID=%s. Telegram logging disabled.",
+        chat_id,
+    )
+    return None
+
+
 async def setup_logging(client):
     """Setup complete logging system"""
-    # Setup Telegram handler
-    vbot_logger.setup_telegram_handler(client, LOG_GROUP_ID)
+    log_chat_id = await _resolve_log_chat_id(client)
+
+    # Setup Telegram handler (if configured)
+    vbot_logger.setup_telegram_handler(client, log_chat_id)
 
     # Setup SQL handler
     vbot_logger.setup_sql_handler()
