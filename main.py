@@ -507,6 +507,173 @@ class VBot:
 
         await message.reply(result_text)
 
+    async def _handle_start_command(self, message):
+        """Handle /start and /help commands"""
+        try:
+            # Get bot info
+            me = await self.client.get_me()
+            bot_username = me.username or "VBot"
+
+            # Build welcome message
+            welcome_text = f"""
+👋 **Welcome to {me.first_name}!**
+
+🎵 **VBot Music Bot** - Full-featured Telegram music bot
+
+**Quick Start:**
+• `/play <query>` - Play audio from YouTube/Spotify
+• `/vplay <query>` - Play video
+• `/queue` - Show current queue
+• `/help` - Show all commands
+
+**Features:**
+✅ YouTube & Spotify support
+✅ Voice chat streaming
+✅ Queue management
+✅ Admin controls
+✅ Session generator
+
+**Get Started:**
+Type `/help` for complete command list or just send a song name!
+
+📱 **VBot Python v2.0.0**
+By Vzoel Fox's
+"""
+
+            # Add inline buttons
+            buttons = [
+                [
+                    Button.inline("📚 Help", b"help_main"),
+                    Button.inline("ℹ️ About", b"about")
+                ],
+                [
+                    Button.inline("🔐 Gen Session", b"start_gensession")
+                ]
+            ]
+
+            await message.reply(
+                VBotBranding.wrap_message(welcome_text, include_footer=False),
+                buttons=buttons
+            )
+
+        except Exception as e:
+            logger.error(f"Error in start command: {e}")
+            await message.reply("👋 Welcome to VBot!\n\nType /help for commands.")
+
+    async def _handle_help_command(self, message):
+        """Handle /help command - show all commands"""
+        try:
+            help_text = """
+📚 **VBot Command Reference**
+
+**🎵 Music Commands:**
+• `/play <query>` - Play audio (YouTube/Spotify)
+• `/vplay <query>` - Play video
+• `/pause` - Pause playback
+• `/resume` - Resume playback
+• `/skip` - Skip current song
+• `/stop` - Stop and clear queue
+• `/queue` - Show queue
+• `/shuffle` - Shuffle queue
+• `/loop <off/current/all>` - Loop mode
+• `/seek <seconds>` - Jump to position
+• `/volume <0-200>` - Adjust volume
+
+**👥 Group Management:**
+• `/pm @user <title>` - Promote to admin
+• `/dm @user` - Demote from admin
+• `/tagall <text>` - Tag all members
+• `/cancel` - Cancel tag operation
+• `/lock @user` - Lock user (auto-delete)
+• `/unlock @user` - Unlock user
+• `/locklist` - Show locked users
+
+**🔧 Bot Commands:**
+• `/start` - Start bot & main menu
+• `/help` - This help message
+• `/about` - Bot information
+• `/ping` - Check bot status
+• `/gensession` - Generate session string
+
+**ℹ️ Prefix Info:**
+• `/` - Public commands (available to all)
+• `+` - Owner/Developer commands
+• `.` - Admin commands
+
+Type any command for usage help!
+"""
+
+            await message.reply(
+                VBotBranding.wrap_message(help_text, include_footer=False)
+            )
+
+        except Exception as e:
+            logger.error(f"Error in help command: {e}")
+            await message.reply("📚 Help system error. Please contact support.")
+
+    async def _handle_about_command(self, message):
+        """Handle /about command - show bot info"""
+        try:
+            # Calculate uptime
+            uptime_text = "Unknown"
+            if self.start_time:
+                now = datetime.now(timezone.utc)
+                uptime_text = self._format_timedelta(now - self.start_time)
+
+            # Get bot info
+            me = await self.client.get_me()
+
+            about_text = f"""
+ℹ️ **About VBot**
+
+**Bot Information:**
+• Name: {me.first_name}
+• Username: @{me.username}
+• Version: 2.0.0 Python
+• Uptime: {uptime_text}
+
+**Features:**
+✅ Music streaming (YouTube/Spotify)
+✅ Voice chat support
+✅ Group management tools
+✅ Session string generator
+✅ Premium emoji system
+✅ Advanced logging
+
+**Technology:**
+• Python 3.11+
+• Telethon (MTProto)
+• yt-dlp for downloads
+• PyTgCalls for streaming
+
+**Developer:**
+👨‍💻 Vzoel Fox's
+📧 @VZLfxs
+
+**Links:**
+• GitHub: [VanZoel112](https://github.com/VanZoel112)
+• Support: Contact @VZLfxs
+
+**License:**
+© 2025 Vzoel Fox's Lutpan
+"""
+
+            buttons = [
+                [
+                    Button.url("📱 Developer", "https://t.me/VZLfxs"),
+                    Button.url("💻 GitHub", "https://github.com/VanZoel112")
+                ]
+            ]
+
+            await message.reply(
+                VBotBranding.wrap_message(about_text, include_footer=False),
+                buttons=buttons
+            )
+
+        except Exception as e:
+            logger.error(f"Error in about command: {e}")
+            await message.reply("ℹ️ VBot v2.0.0 by Vzoel Fox's")
+
     async def _handle_music_command(self, message, parts, audio_only=True):
         """Handle music download/stream commands"""
         if not config.MUSIC_ENABLED:
