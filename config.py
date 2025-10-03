@@ -133,12 +133,27 @@ API_HASH = os.getenv("API_HASH", "YOUR_API_HASH_HERE")
 # ==============================================
 
 # Your Telegram User ID (owner)
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+_owner_id_raw = os.getenv("OWNER_ID", "").strip()
+_owner_id_candidates = [
+    owner_id for owner_id in _parse_int_list(_owner_id_raw) if owner_id
+]
+
+if not _owner_id_candidates:
+    try:
+        fallback_owner = int(_owner_id_raw or "0")
+    except ValueError:
+        fallback_owner = 0
+
+    if fallback_owner:
+        _owner_id_candidates.append(fallback_owner)
+
+OWNER_ID = _owner_id_candidates[0] if _owner_id_candidates else 0
 
 # Developer IDs (can use . prefix commands)
 _developer_ids_from_env = _parse_int_list(os.getenv("DEVELOPER_IDS"))
-if OWNER_ID and OWNER_ID not in _developer_ids_from_env:
-    _developer_ids_from_env.append(OWNER_ID)
+for owner_id in _owner_id_candidates:
+    if owner_id not in _developer_ids_from_env:
+        _developer_ids_from_env.append(owner_id)
 DEVELOPER_IDS = _developer_ids_from_env
 
 # Admin chat IDs (can use / prefix commands)
