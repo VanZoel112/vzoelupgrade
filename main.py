@@ -1483,6 +1483,7 @@ Contact @VZLfxs for support & inquiries
                     await message.reply(
                         "**Error:** Protected account detected but failed to apply the automatic lock."
                     )
+                await message.reply("**Error:** You cannot lock bot developers or owners.")
                 return
 
             # Get reason if provided
