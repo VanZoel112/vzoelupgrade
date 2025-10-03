@@ -650,9 +650,8 @@ Type any command for usage help!
 👨‍💻 Vzoel Fox's
 📧 @VZLfxs
 
-**Links:**
-• GitHub: [VanZoel112](https://github.com/VanZoel112)
-• Support: Contact @VZLfxs
+**Support:**
+Contact @VZLfxs for support & inquiries
 
 **License:**
 © 2025 Vzoel Fox's Lutpan
@@ -660,8 +659,7 @@ Type any command for usage help!
 
             buttons = [
                 [
-                    Button.url("📱 Developer", "https://t.me/VZLfxs"),
-                    Button.url("💻 GitHub", "https://github.com/VanZoel112")
+                    Button.url("📱 Developer", "https://t.me/VZLfxs")
                 ]
             ]
 
