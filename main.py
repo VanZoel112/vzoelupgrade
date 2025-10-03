@@ -135,6 +135,7 @@ class VBot:
 
             # Register handlers
             self.client.add_event_handler(self._handle_message, events.NewMessage)
+            self.client.add_event_handler(self._handle_callback, events.CallbackQuery)
 
             # Setup bot commands
             await self._setup_bot_commands()
@@ -227,6 +228,125 @@ class VBot:
 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
+    async def _handle_callback(self, event):
+        """Handle inline button callbacks"""
+        try:
+            data = event.data.decode('utf-8')
+
+            # Help main callback
+            if data == "help_main":
+                help_text = """
+📚 **VBot Command Reference**
+
+**🎵 Music Commands:**
+• `/play <query>` - Play audio (YouTube/Spotify)
+• `/vplay <query>` - Play video
+• `/pause` - Pause playback
+• `/resume` - Resume playback
+• `/skip` - Skip current song
+• `/stop` - Stop and clear queue
+• `/queue` - Show queue
+• `/shuffle` - Shuffle queue
+• `/loop <off/current/all>` - Loop mode
+• `/seek <seconds>` - Jump to position
+• `/volume <0-200>` - Adjust volume
+
+**👥 Group Management:**
+• `/pm @user <title>` - Promote to admin
+• `/dm @user` - Demote from admin
+• `/tagall <text>` - Tag all members
+• `/cancel` - Cancel tag operation
+• `/lock @user` - Lock user (auto-delete)
+• `/unlock @user` - Unlock user
+• `/locklist` - Show locked users
+
+**🔧 Bot Commands:**
+• `/start` - Start bot & main menu
+• `/help` - This help message
+• `/about` - Bot information
+• `/ping` - Check bot status
+• `/gensession` - Generate session string
+
+**ℹ️ Prefix Info:**
+• `/` - Public commands (available to all)
+• `+` - Owner commands (developer only)
+• `.` - Admin commands
+
+📱 **VBot Python v2.0.0**
+By Vzoel Fox's
+"""
+                await event.edit(VBotBranding.wrap_message(help_text, include_footer=False))
+
+            # About callback
+            elif data == "about":
+                await event.answer("Loading about info...")
+                me = await self.client.get_me()
+                about_text = f"""
+ℹ️ **About VBot Music Bot**
+
+**Bot Info:**
+• Name: {me.first_name}
+• Username: @{me.username}
+• Version: 2.0.0 Python
+
+**Features:**
+🎵 Multi-platform music (YouTube/Spotify)
+🎬 Video streaming support
+📋 Smart queue management
+👥 Admin & group controls
+🔐 Session generator
+🔒 Lock & privacy system
+
+**Technology:**
+• Python 3.x
+• Telethon (MTProto)
+• Pytgcalls (Voice Chat)
+• yt-dlp (Download)
+
+**Developer:**
+👨‍💻 Vzoel Fox's
+📱 Contact: @VzoelFoxs
+
+📱 **VBot Python v2.0.0**
+"""
+                await event.edit(VBotBranding.wrap_message(about_text, include_footer=False))
+
+            # Session generator callback
+            elif data == "start_gensession":
+                # Check if in private chat
+                if not event.is_private:
+                    await event.answer("⚠️ Session generator hanya bisa di private chat!", alert=True)
+                    return
+
+                # Redirect to /gensession command
+                me = await self.client.get_me()
+                await event.answer("Starting session generator...")
+                redirect_text = (
+                    "🔐 **Session String Generator**\n\n"
+                    "Untuk memulai, silakan ketik:\n"
+                    "`/gensession`\n\n"
+                    "atau klik tombol di bawah untuk memulai."
+                )
+                buttons = [[Button.inline("🔐 Start Generator", b"run_gensession")]]
+                await event.edit(redirect_text, buttons=buttons)
+
+            # Run session generator
+            elif data == "run_gensession":
+                if hasattr(self, 'session_generator'):
+                    # Create a mock event for the generator
+                    await event.answer("Memulai generator...")
+                    # Trigger the generator
+                    await event.respond("/gensession")
+                else:
+                    await event.answer("⚠️ Session generator plugin tidak aktif!", alert=True)
+
+            else:
+                await event.answer("Unknown callback")
+
+        except Exception as e:
+            logger.error(f"Error handling callback: {e}")
+            await event.answer("❌ Error processing request", alert=True)
 
     async def _handle_command(self, message):
         """Handle bot commands"""
@@ -540,16 +660,26 @@ Type `/help` for complete command list or just send a song name!
 By Vzoel Fox's
 """
 
-            # Add inline buttons
-            buttons = [
-                [
-                    Button.inline("📚 Help", b"help_main"),
-                    Button.inline("ℹ️ About", b"about")
-                ],
-                [
-                    Button.inline("🔐 Gen Session", b"start_gensession")
+            # Different buttons for private vs group
+            if message.is_private:
+                # Private chat buttons: Generate String, Add to Group, Help
+                buttons = [
+                    [
+                        Button.inline("🔐 Generate String", b"start_gensession"),
+                    ],
+                    [
+                        Button.url("➕ Add to Group", f"https://t.me/{bot_username}?startgroup=true"),
+                        Button.inline("📚 Help", b"help_main")
+                    ]
                 ]
-            ]
+            else:
+                # Group chat buttons: VBot by Vzoel Fox's, Help
+                buttons = [
+                    [
+                        Button.url("🤖 VBot by Vzoel Fox's", "https://t.me/VzoelFoxs"),
+                        Button.inline("📚 Help", b"help_main")
+                    ]
+                ]
 
             await message.reply(
                 VBotBranding.wrap_message(welcome_text, include_footer=False),
