@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 # Import advanced logging system
 from core.logger import setup_logging, vbot_logger
@@ -341,6 +341,10 @@ By Vzoel Fox's
                     await event.respond("/gensession")
                 else:
                     await event.answer("Session generator plugin tidak aktif!", alert=True)
+
+            # Music playback callbacks
+            elif data.startswith("music:"):
+                await self._handle_music_callback(event, data)
 
             else:
                 await event.answer("Unknown callback")
@@ -800,6 +804,131 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Error in about command: {e}")
             await message.reply("VBot v2.0.0 by Vzoel Fox's")
 
+    def _build_music_status_message(self, chat_id: int) -> str:
+        """Return formatted status for current playback."""
+        if not self.music_manager:
+            return "❌ Music system not initialized"
+
+        manager = self.music_manager
+        current = manager.current_song.get(chat_id)
+        queue = manager.queues.get(chat_id, [])
+        paused = manager.paused.get(chat_id, False)
+        stream_mode = manager.stream_mode.get(chat_id, 'audio')
+        loop_mode = manager.loop_mode.get(chat_id, 'off')
+
+        lines: List[str] = []
+
+        if current:
+            lines.append("**Now Playing**")
+            lines.append(f"**Title:** {current.get('title', 'Unknown')}")
+            lines.append(f"**Duration:** {current.get('duration_string', 'Unknown')}")
+            uploader = current.get('uploader')
+            if uploader:
+                lines.append(f"**Uploader:** {uploader}")
+
+            status_label = "⏸️ Paused" if paused else "▶️ Playing"
+            mode_label = "Audio" if stream_mode == 'audio' else "Video"
+            lines.append(f"**Status:** {status_label}")
+            lines.append(f"**Mode:** Streaming ({mode_label})")
+        else:
+            lines.append("📭 **No active playback**")
+
+        if loop_mode != 'off':
+            loop_label = {
+                'current': 'Current track',
+                'all': 'Entire queue'
+            }.get(loop_mode, loop_mode.title())
+            lines.append(f"**Loop:** {loop_label}")
+
+        if queue:
+            lines.append("")
+            lines.append("**Up Next:**")
+            for index, item in enumerate(queue[:5], start=1):
+                title = item.get('title', 'Unknown')
+                duration = item.get('duration_string', 'Unknown')
+                lines.append(f"{index}. {title} ({duration})")
+            if len(queue) > 5:
+                remaining = len(queue) - 5
+                lines.append(f"...and {remaining} more")
+
+        return "\n".join(lines)
+
+    def _build_music_control_buttons(self, chat_id: int) -> Optional[List[List[Button]]]:
+        """Create inline buttons for controlling playback."""
+        if not self.music_manager:
+            return None
+
+        manager = self.music_manager
+        if not getattr(manager, 'streaming_available', False):
+            return None
+
+        active_calls = getattr(manager, 'active_calls', {})
+        if chat_id not in active_calls:
+            return None
+
+        paused = manager.paused.get(chat_id, False)
+        loop_mode = manager.loop_mode.get(chat_id, 'off')
+        loop_label = {
+            'off': 'Off',
+            'current': 'Current',
+            'all': 'All'
+        }.get(loop_mode, loop_mode.title())
+
+        return [
+            [
+                Button.inline(
+                    "⏸ Pause" if not paused else "▶️ Resume",
+                    f"music:toggle_pause:{chat_id}".encode()
+                ),
+                Button.inline("⏭ Skip", f"music:skip:{chat_id}".encode()),
+                Button.inline("⏹ Stop", f"music:stop:{chat_id}".encode()),
+            ],
+            [
+                Button.inline(
+                    f"🔁 Loop: {loop_label}",
+                    f"music:loop:{chat_id}".encode()
+                ),
+                Button.inline("🔀 Shuffle", f"music:shuffle:{chat_id}".encode()),
+                Button.inline("📜 Queue", f"music:queue:{chat_id}".encode()),
+            ],
+        ]
+
+    def _format_music_queue_response(self, chat_id: int, result: Dict) -> str:
+        """Format response when a track is added to the queue."""
+        song_info = result.get('song', {})
+        position = result.get('position')
+
+        lines = [
+            f"**Added to queue (Position {position})**" if position else "**Added to queue**",
+            "",
+            f"**Title:** {song_info.get('title', 'Unknown')}",
+            f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
+        ]
+
+        queue_status = self._build_music_status_message(chat_id)
+        if queue_status:
+            lines.extend(["", queue_status])
+
+        return "\n".join(lines)
+
+    def _format_music_download_response(self, result: Dict) -> str:
+        """Format response when media is downloaded instead of streamed."""
+        song_info = result.get('song', {})
+
+        lines = [
+            "**Now Playing (Download Mode)**",
+            "",
+            f"**Title:** {song_info.get('title', 'Unknown')}",
+            f"**Duration:** {song_info.get('duration_string', 'Unknown')}",
+            "**Mode:** Download"
+        ]
+
+        uploader = song_info.get('uploader')
+        if uploader:
+            lines.insert(3, f"**Uploader:** {uploader}")
+
+        return "\n".join(lines)
+
     async def _handle_music_command(self, message, parts, audio_only=True):
         """Handle music download/stream commands"""
         if not config.MUSIC_ENABLED:
@@ -837,25 +966,21 @@ Contact @VZLfxs for support & inquiries
 
             # Format result message
             if result.get('success'):
-                song_info = result.get('song', {})
-                if result.get('queued'):
-                    response = f"**Added to queue (Position {result['position']})**\n\n"
-                    response += f"**Title:** {song_info.get('title', 'Unknown')}\n"
-                    response += f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
-                else:
-                    response = f"**Now Playing**\n\n"
-                    response += f"**Title:** {song_info.get('title', 'Unknown')}\n"
-                    response += f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
-
                 if result.get('streaming'):
-                    response += f"\n**Mode:** Streaming"
-                    await status_msg.edit(response)
+                    if result.get('queued'):
+                        response = self._format_music_queue_response(message.chat_id, result)
+                    else:
+                        response = self._build_music_status_message(message.chat_id)
+
+                    buttons = self._build_music_control_buttons(message.chat_id)
+                    await status_msg.edit(response, buttons=buttons)
                 else:
-                    response += f"\n**Mode:** Download"
+                    response = self._format_music_download_response(result)
                     await status_msg.edit(response)
 
                     file_path = result.get('file_path')
                     if file_path:
+                        song_info = result.get('song', {})
                         caption_lines = [
                             f"**Title:** {song_info.get('title', 'Unknown')}",
                             f"**Duration:** {song_info.get('duration_string', 'Unknown')}"
@@ -886,6 +1011,62 @@ Contact @VZLfxs for support & inquiries
         except Exception as e:
             logger.error(f"Music command error: {e}", exc_info=True)
             await message.reply(VBotBranding.format_error(f"Music error: {e}"))
+
+    async def _handle_music_callback(self, event, data: str):
+        """Process inline button callbacks for music controls."""
+        if not self.music_manager:
+            await event.answer("❌ Music system not initialized", alert=True)
+            return
+
+        try:
+            _, action, chat_id_raw = data.split(":", 2)
+            chat_id = int(chat_id_raw)
+        except ValueError:
+            await event.answer("❌ Invalid music action", alert=True)
+            return
+
+        manager = self.music_manager
+        response_text: Optional[str] = None
+
+        try:
+            if action == "toggle_pause":
+                paused = manager.paused.get(chat_id, False)
+                if paused:
+                    response_text = await manager.resume(chat_id)
+                else:
+                    response_text = await manager.pause(chat_id)
+            elif action == "skip":
+                response_text = await manager.skip(chat_id)
+            elif action == "stop":
+                response_text = await manager.stop(chat_id)
+            elif action == "loop":
+                response_text = await manager.set_loop(chat_id, "toggle")
+            elif action == "shuffle":
+                response_text = await manager.shuffle(chat_id)
+            elif action == "queue":
+                queue_text = await manager.show_queue(chat_id)
+                await self.client.send_message(chat_id, queue_text)
+                response_text = "📨 Queue dikirim ke chat"
+            else:
+                await event.answer("❌ Unknown action", alert=True)
+                return
+        except Exception as exc:
+            logger.error(f"Music callback error: {exc}", exc_info=True)
+            await event.answer("❌ Gagal memproses tombol", alert=True)
+            return
+
+        try:
+            status_text = self._build_music_status_message(chat_id)
+            buttons = self._build_music_control_buttons(chat_id)
+            await event.edit(status_text, buttons=buttons)
+        except Exception as edit_error:
+            logger.debug(f"Failed to update music status message: {edit_error}")
+
+        if response_text:
+            show_alert = response_text.startswith("❌")
+            await event.answer(response_text, alert=show_alert)
+        else:
+            await event.answer("Selesai", alert=False)
 
     async def _handle_pause_command(self, message):
         """Handle /pause command"""
@@ -1252,6 +1433,58 @@ Contact @VZLfxs for support & inquiries
                 )
                 return
 
+            # Prevent locking bot developers/owners
+            if self.auth_manager.is_developer(target_user_id) or self.auth_manager.is_owner(target_user_id):
+                issuer_id = getattr(message, 'sender_id', None)
+                if not issuer_id:
+                    await message.reply("**Error:** You cannot lock bot developers or owners.")
+                    return
+
+                protected_role = "developer" if self.auth_manager.is_developer(target_user_id) else "owner"
+                punishment_reason = (
+                    f"Attempted to lock a protected {protected_role}. "
+                    "Only bot developers can unlock this restriction."
+                )
+                metadata = {
+                    'requires_developer': True,
+                    'reason': punishment_reason,
+                    'locked_for': 'protected_account_attempt',
+                    'protected_role': protected_role,
+                    'protected_user_id': target_user_id,
+                }
+
+                logger.warning(
+                    "User %s attempted to lock protected %s %s", issuer_id, protected_role, target_user_id
+                )
+
+                success = await self.lock_manager.lock_user(
+                    message.chat_id,
+                    issuer_id,
+                    punishment_reason,
+                    metadata=metadata,
+                )
+
+                if success:
+                    try:
+                        issuer_entity = await self.client.get_entity(issuer_id)
+                        if getattr(issuer_entity, 'username', None):
+                            issuer_label = f"@{issuer_entity.username}"
+                        else:
+                            issuer_label = f"[User {issuer_id}](tg://user?id={issuer_id})"
+                    except Exception:
+                        issuer_label = f"User {issuer_id}"
+
+                    await message.reply(
+                        "**Protected Account Attempt**\n\n"
+                        f"{issuer_label} tried to lock a protected {protected_role} and has been locked instead.\n"
+                        "Only bot developers can unlock this restriction."
+                    )
+                else:
+                    await message.reply(
+                        "**Error:** Protected account detected but failed to apply the automatic lock."
+                    )
+                return
+
             # Get reason if provided
             reason = "Locked by admin"
             if len(parts) > 2:
@@ -1314,6 +1547,15 @@ Contact @VZLfxs for support & inquiries
                 return
 
             # Unlock the user
+            metadata = self.lock_manager.get_lock_metadata(message.chat_id, target_user_id)
+            if metadata.get('requires_developer'):
+                issuer_id = getattr(message, 'sender_id', None)
+                if not issuer_id or not self.auth_manager.is_developer(issuer_id):
+                    await message.reply(
+                        "**Error:** Only bot developers can unlock this user after they attempted to lock a protected account."
+                    )
+                    return
+
             success = await self.lock_manager.unlock_user(message.chat_id, target_user_id)
 
             if success:

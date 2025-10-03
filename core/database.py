@@ -73,6 +73,9 @@ class Database:
         if 'locks' not in self.data:
             self.data['locks'] = {}  # chat_id: {user_id: True}
 
+        if 'lock_metadata' not in self.data:
+            self.data['lock_metadata'] = {}  # chat_id: {user_id: metadata}
+
         if 'welcome' not in self.data:
             self.data['welcome'] = {}  # chat_id: {enabled: bool, message: str}
 
@@ -139,21 +142,41 @@ class Database:
     # LOCK SYSTEM
     # ==============================================
 
-    def lock_user(self, chat_id: int, user_id: int):
+    def lock_user(self, chat_id: int, user_id: int, metadata: Optional[Dict[str, Any]] = None):
         """Lock user in chat (auto-delete their messages)"""
         chat_key = str(chat_id)
         if chat_key not in self.data['locks']:
             self.data['locks'][chat_key] = []
         if user_id not in self.data['locks'][chat_key]:
             self.data['locks'][chat_key].append(user_id)
-            self._save()
+
+        # Persist metadata when provided (e.g. developer-protection locks)
+        metadata_store = self.data.setdefault('lock_metadata', {})
+        chat_metadata = metadata_store.setdefault(chat_key, {})
+
+        if metadata:
+            chat_metadata[str(user_id)] = metadata
+        else:
+            chat_metadata.pop(str(user_id), None)
+
+        self._save()
 
     def unlock_user(self, chat_id: int, user_id: int):
         """Unlock user in chat"""
         chat_key = str(chat_id)
         if chat_key in self.data['locks'] and user_id in self.data['locks'][chat_key]:
             self.data['locks'][chat_key].remove(user_id)
-            self._save()
+
+        # Remove associated metadata, if any
+        metadata_store = self.data.get('lock_metadata')
+        if metadata_store:
+            chat_metadata = metadata_store.get(chat_key)
+            if chat_metadata and chat_metadata.pop(str(user_id), None) is not None:
+                # Clean up empty metadata structures
+                if not chat_metadata:
+                    metadata_store.pop(chat_key, None)
+
+        self._save()
 
     def is_locked(self, chat_id: int, user_id: int) -> bool:
         """Check if user is locked"""
@@ -164,6 +187,14 @@ class Database:
         """Get locked users in chat"""
         chat_key = str(chat_id)
         return self.data['locks'].get(chat_key, [])
+
+    def get_lock_metadata(self, chat_id: int, user_id: int) -> Dict[str, Any]:
+        """Return metadata for a locked user, if available"""
+        chat_key = str(chat_id)
+        user_key = str(user_id)
+        chat_metadata = self.data.get('lock_metadata', {}).get(chat_key, {})
+        metadata = chat_metadata.get(user_key)
+        return metadata if isinstance(metadata, dict) else {}
 
     # ==============================================
     # WELCOME SYSTEM
