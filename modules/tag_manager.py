@@ -91,7 +91,7 @@ class TagManager:
             session = self.active_tags[chat_id]
             members = session['members']
             base_message = session['message']
-            batch_size = 10  # Tag 10 users per edit
+            batch_size = 5  # Tag 5 users per edit
 
             # Send initial message
             initial_text = f"{base_message}\n\n⏳ Starting tag process..."

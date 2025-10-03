@@ -512,6 +512,12 @@ By Vzoel Fox's
             elif command == '/locklist':
                 await self._handle_locklist_command(message)
 
+            # Tag system
+            elif command == '/tagall':
+                await self._handle_tagall_command(message, parts)
+            elif command == '/cancel':
+                await self._handle_cancel_command(message)
+
             # Help command (available to all)
             elif command in ['/help', '#help']:
                 await self._handle_help_command(message)
@@ -1332,6 +1338,67 @@ Contact @VZLfxs for support & inquiries
 
         except Exception as e:
             logger.error(f"Error in locklist command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}")
+
+    async def _handle_tagall_command(self, message, parts):
+        """Handle /tagall command - tag all members"""
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Tag all only works in groups!**")
+            return
+
+        try:
+            # Get custom message if provided
+            custom_message = "Tagging all members..."
+            if len(parts) > 1:
+                custom_message = ' '.join(parts[1:])
+
+            # Start tag all process
+            success = await self.tag_manager.start_tag_all(
+                self.client,
+                message.chat_id,
+                custom_message,
+                message.sender_id
+            )
+
+            if success:
+                await message.reply(
+                    f"**Tag All Started**\n\n"
+                    f"**Message:** {custom_message}\n\n"
+                    f"Tagging all members... Use `/cancel` to stop."
+                )
+            else:
+                # Check if already tagging
+                if message.chat_id in self.tag_manager.active_tags:
+                    await message.reply(
+                        "**Tag all already in progress!**\n\n"
+                        "Wait for current process to finish or use `/cancel` to stop it."
+                    )
+                else:
+                    await message.reply("**Error:** Could not start tag all. No members found or insufficient permissions.")
+
+        except Exception as e:
+            logger.error(f"Error in tagall command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}")
+
+    async def _handle_cancel_command(self, message):
+        """Handle /cancel command - cancel ongoing tag all"""
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Cancel only works in groups!**")
+            return
+
+        try:
+            success = await self.tag_manager.cancel_tag_all(message.chat_id)
+
+            if success:
+                await message.reply(
+                    "**Tag All Cancelled**\n\n"
+                    "The tagging process has been stopped."
+                )
+            else:
+                await message.reply("**No active tag all process in this chat.**")
+
+        except Exception as e:
+            logger.error(f"Error in cancel command: {e}", exc_info=True)
             await message.reply(f"**Error:** {str(e)}")
 
 
