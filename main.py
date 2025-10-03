@@ -1302,7 +1302,7 @@ Contact @VZLfxs for support & inquiries
                     await status_msg.edit(caption)
                     buttons = self._build_music_control_buttons(message.chat_id)
                     await status_msg.edit(response, buttons=buttons)
-                else:
+                    else:
                     response = self._format_music_download_response(result)
                     await status_msg.edit(response)
 
