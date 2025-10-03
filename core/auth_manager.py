@@ -85,12 +85,17 @@ class AuthManager:
     async def can_use_admin_command(
         self,
         client,
-        user_id: int,
+        user_id: int | None,
         chat_id: int,
         *,
         require_manage_admins: bool = False,
     ) -> bool:
         """Admin-level commands (prefix '/')"""
+        if user_id is None:
+            # Anonymous or channel-linked admins don't provide sender IDs but are
+            # inherently administrators of the chat they speak as.
+            return True
+
         perms = await self._get_chat_permissions(client, user_id, chat_id)
 
         if perms is None:
@@ -134,7 +139,13 @@ class AuthManager:
             return "public"
         return None
 
-    async def check_permissions(self, client, user_id: int, chat_id: int, command_text: str) -> bool:
+    async def check_permissions(
+        self,
+        client,
+        user_id: int | None,
+        chat_id: int,
+        command_text: str,
+    ) -> bool:
         """Main permission checker for commands."""
         cmd = command_text.split()[0].lower() if command_text else ""
 

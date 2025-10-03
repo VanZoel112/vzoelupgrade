@@ -156,7 +156,7 @@ MUSIC_ENABLED = _get_bool("MUSIC_ENABLED", True)
 DOWNLOAD_PATH = os.getenv("DOWNLOAD_PATH", "downloads/")
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(50 * 1024 * 1024)))  # 50MB
 AUDIO_QUALITY = os.getenv("AUDIO_QUALITY", "bestaudio[ext=m4a]/bestaudio")
-MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "")
+MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "6269447591602883849")
 
 # ==============================================
 # ASSISTANT ACCOUNT (Voice Chat Streaming)
