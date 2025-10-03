@@ -18,7 +18,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
-from typing import Dict, Optional, List
+
+try:
+    import uvloop
+except ImportError:  # pragma: no cover - optional dependency
+    uvloop = None
 
 # Import advanced logging system
 from core.logger import setup_logging, vbot_logger
@@ -898,13 +902,42 @@ Contact @VZLfxs for support & inquiries
                 await message.reply(VBotBranding.format_error("Perintah ini hanya untuk developer."))
                 return
 
+            sender_id = getattr(message, "sender_id", 0)
+            if not await self.emoji_manager.is_user_premium(self.client, sender_id):
+                await message.reply(
+                    VBotBranding.format_error(
+                        "Fitur mapping premium membutuhkan akun Telegram Premium."
+                    )
+                )
+                return
+
             reply = await message.get_reply_message()
             if not reply:
                 await message.reply("Balas ke pesan atau media yang ingin dianalisis dengan perintah ini.")
                 return
 
             metadata = await self._extract_message_metadata(reply)
-            await self._deliver_json_metadata(message.chat_id, message.id, metadata)
+            new_mappings = self.emoji_manager.record_mapping_from_metadata(metadata)
+
+            response_lines = []
+            if new_mappings:
+                response_lines.append("Mapping emoji premium berhasil diperbarui otomatis!")
+                for standard, values in new_mappings.items():
+                    if standard == "__pool__":
+                        for emoji in values:
+                            response_lines.append(f"• Ditambahkan ke pool: {emoji}")
+                    else:
+                        preview = " / ".join(values)
+                        response_lines.append(f"• {standard} → {preview}")
+            else:
+                response_lines.append("Tidak ada emoji premium baru yang dapat dipetakan dari pesan ini.")
+
+            random_premium = self.emoji_manager.get_random_premium_emoji()
+            if random_premium:
+                response_lines.append("")
+                response_lines.append(f"Emoji premium acak: {random_premium}")
+
+            await message.reply(VBotBranding.format_success("\n".join(response_lines)))
 
         except Exception as exc:
             logger.error(f"showjson command failed: {exc}", exc_info=True)
@@ -1013,6 +1046,8 @@ Contact @VZLfxs for support & inquiries
                     {
                         "emoji": emoji_text,
                         "document_id": getattr(entity, "document_id", None),
+                        "offset": getattr(entity, "offset", None),
+                        "length": getattr(entity, "length", None),
                     }
                 )
         metadata["custom_emojis"] = custom_emojis or None
@@ -2164,6 +2199,8 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        if uvloop is not None:
+            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
