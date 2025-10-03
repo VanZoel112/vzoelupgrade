@@ -251,6 +251,11 @@ GITHUB_AUTO_PUSH_INTERVAL = int(os.getenv("GITHUB_AUTO_PUSH_INTERVAL", "1200"))
 # PREMIUM EMOJI MAPPINGS
 # ==============================================
 
+PREMIUM_EMOJI_MAPPING_FILE = os.getenv(
+    "PREMIUM_EMOJI_MAPPING_FILE",
+    "database/premium_emoji_map.json",
+)
+
 PREMIUM_EMOJI_MAP = {
     "🎵": "🎵",
     "⏸️": "⏸️",

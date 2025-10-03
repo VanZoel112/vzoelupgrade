@@ -140,7 +140,7 @@ class AuthManager:
 
         # Backward-compat: some slash-commands are public
         music_commands = ['/play', '/p', '/music', '/pause', '/resume', '/stop', '/end', '/queue', '/q']
-        public_slash_commands = ['/ping']
+        public_slash_commands = ['/ping', '/start']
         if cmd in music_commands or cmd in public_slash_commands:
             return True
 
