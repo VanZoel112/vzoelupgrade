@@ -11,11 +11,12 @@ import asyncio
 import logging
 import json
 import aiohttp
-import aiofiles
 from typing import Dict, Optional, List
 from pathlib import Path
 from datetime import datetime
 import config
+
+DEFAULT_AUTO_PUSH_INTERVAL = 1200
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ class GitHubSync:
     def __init__(self):
         self.sync_queue: List[Dict] = []
         self.is_syncing = False
+        self._auto_push_task: Optional[asyncio.Task] = None
+        self._repo_root = Path(config.__file__).resolve().parent
 
     async def push_data_to_github(self, file_path: str, content: str, commit_message: str = None) -> bool:
         """Push data to GitHub repository"""
@@ -174,6 +177,114 @@ class GitHubSync:
         # Start background sync if not already running
         if not self.is_syncing:
             asyncio.create_task(self._process_sync_queue())
+
+    def start_auto_push_loop(self) -> None:
+        """Start the periodic git push loop if enabled."""
+
+        if self._auto_push_task:
+            return
+
+        if not (config.ENABLE_GITHUB_SYNC and config.GITHUB_AUTO_PUSH):
+            return
+
+        interval = getattr(config, "GITHUB_AUTO_PUSH_INTERVAL", DEFAULT_AUTO_PUSH_INTERVAL)
+        try:
+            interval_value = int(interval)
+        except (TypeError, ValueError):
+            interval_value = DEFAULT_AUTO_PUSH_INTERVAL
+
+        interval_value = max(60, interval_value)
+        self._auto_push_task = asyncio.create_task(self._auto_push_loop(interval_value))
+
+    async def _auto_push_loop(self, interval: int) -> None:
+        """Background loop that periodically commits and pushes repo changes."""
+
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self._commit_and_push_repo()
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.error(f"Auto push failed: {exc}", exc_info=True)
+
+    async def _commit_and_push_repo(self) -> None:
+        """Commit pending changes and push to the configured branch."""
+
+        if not self._repo_root.exists():
+            logger.debug("Repository root not found for auto push: %s", self._repo_root)
+            return
+
+        status_cmd = "git status --porcelain"
+        status_proc = await asyncio.create_subprocess_shell(
+            status_cmd,
+            cwd=str(self._repo_root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        status_stdout, status_stderr = await status_proc.communicate()
+
+        if status_proc.returncode != 0:
+            logger.warning(
+                "git status failed (%s): %s",
+                status_proc.returncode,
+                status_stderr.decode(errors="ignore"),
+            )
+            return
+
+        if not status_stdout.strip():
+            logger.debug("Auto push skipped: no changes detected")
+            return
+
+        if not await self._run_git_command("git add -A"):
+            return
+
+        commit_message = datetime.now().strftime("[AutoSync] %Y-%m-%d %H:%M:%S")
+        commit_cmd = f"git commit -m \"{commit_message}\""
+        commit_result = await asyncio.create_subprocess_shell(
+            commit_cmd,
+            cwd=str(self._repo_root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        commit_stdout, commit_stderr = await commit_result.communicate()
+
+        if commit_result.returncode != 0:
+            combined = (commit_stdout + commit_stderr).lower()
+            if b"nothing to commit" in combined:
+                logger.debug("Auto push: nothing to commit")
+                return
+            logger.warning(
+                "git commit failed (%s): %s",
+                commit_result.returncode,
+                commit_stderr.decode(errors="ignore"),
+            )
+            return
+
+        push_cmd = f"git push origin {config.GITHUB_BRANCH}"
+        await self._run_git_command(push_cmd)
+
+    async def _run_git_command(self, command: str) -> bool:
+        """Execute a git command in the repository root."""
+
+        process = await asyncio.create_subprocess_shell(
+            command,
+            cwd=str(self._repo_root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            logger.warning(
+                "Command '%s' failed (%s): %s",
+                command,
+                process.returncode,
+                stderr.decode(errors="ignore"),
+            )
+            return False
+
+        if stdout:
+            logger.debug("git output (%s): %s", command, stdout.decode(errors="ignore").strip())
+        return True
 
     async def _process_sync_queue(self):
         """Process sync queue in background"""

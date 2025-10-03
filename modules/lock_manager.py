@@ -9,7 +9,7 @@ Version: 2.0.0 Python (Database-backed)
 
 import logging
 from collections import defaultdict
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from telethon.errors import (
     UsernameInvalidError,
@@ -31,14 +31,20 @@ class LockManager:
         self.lock_reasons: Dict[int, Dict[int, str]] = defaultdict(dict)
         logger.info("LockManager initialized with Database backend")
 
-    async def lock_user(self, chat_id: int, user_id: int, reason: str = "Locked by admin") -> bool:
-        """Lock a user in a specific chat"""
+    async def lock_user(
+        self,
+        chat_id: int,
+        user_id: int,
+        reason: str = "Locked by admin",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Lock a user in a specific chat and optionally persist metadata."""
         try:
             if not self.database:
                 logger.error("Database not initialized")
                 return False
 
-            self.database.lock_user(chat_id, user_id)
+            self.database.lock_user(chat_id, user_id, metadata=metadata)
             self.lock_reasons[chat_id][user_id] = reason
             logger.info(f"Locked user {user_id} in chat {chat_id}: {reason}")
             return True
@@ -83,6 +89,12 @@ class LockManager:
                 # Log the deletion
                 username = getattr(message.sender, 'username', 'Unknown')
                 reason = self.lock_reasons.get(chat_id, {}).get(user_id, 'Locked by admin')
+                if reason == 'Locked by admin':
+                    metadata = self.get_lock_metadata(chat_id, user_id)
+                    meta_reason = metadata.get('reason') if metadata else None
+                    if meta_reason:
+                        reason = meta_reason
+                        self.lock_reasons[chat_id][user_id] = meta_reason
 
                 logger.info(
                     f"Deleted message from locked user {user_id} (@{username}) in chat {chat_id}. Reason: {reason}"
@@ -164,8 +176,29 @@ class LockManager:
             return {}
 
         locked_ids = self.database.get_locked_users(chat_id)
-        return {user_id: {'reason': self.lock_reasons.get(chat_id, {}).get(user_id, 'Locked by admin')}
-                for user_id in locked_ids}
+        results: Dict[int, Dict[str, Any]] = {}
+
+        for user_id in locked_ids:
+            reason = self.lock_reasons.get(chat_id, {}).get(user_id)
+            metadata = self.get_lock_metadata(chat_id, user_id)
+
+            if not reason:
+                reason = metadata.get('reason') if metadata else None
+                if reason:
+                    self.lock_reasons[chat_id][user_id] = reason
+
+            results[user_id] = {
+                'reason': reason or 'Locked by admin',
+                'metadata': metadata,
+            }
+
+        return results
+
+    def get_lock_metadata(self, chat_id: int, user_id: int) -> Dict[str, Any]:
+        """Return metadata for a locked user"""
+        if not self.database:
+            return {}
+        return self.database.get_lock_metadata(chat_id, user_id)
 
     def get_lock_stats(self) -> Dict:
         """Get lock system statistics"""
