@@ -745,7 +745,7 @@ Type any command for usage help!
             me = await self.client.get_me()
 
             about_text = f"""
-ℹ️ **About VBot**
+**About VBot**
 
 **Bot Information:**
 • Name: {me.first_name}
@@ -754,12 +754,12 @@ Type any command for usage help!
 • Uptime: {uptime_text}
 
 **Features:**
-✅ Music streaming (YouTube/Spotify)
-✅ Voice chat support
-✅ Group management tools
-✅ Session string generator
-✅ Premium emoji system
-✅ Advanced logging
+• Music streaming (YouTube/Spotify)
+• Voice chat support
+• Group management tools
+• Session string generator
+• Premium emoji system
+• Advanced logging
 
 **Technology:**
 • Python 3.11+
@@ -768,8 +768,8 @@ Type any command for usage help!
 • PyTgCalls for streaming
 
 **Developer:**
-👨‍💻 Vzoel Fox's
-📧 @VZLfxs
+• Vzoel Fox's
+• @VZLfxs
 
 **Support:**
 Contact @VZLfxs for support & inquiries
@@ -780,7 +780,7 @@ Contact @VZLfxs for support & inquiries
 
             buttons = [
                 [
-                    Button.url("📱 Developer", "https://t.me/VZLfxs")
+                    Button.url("Developer", "https://t.me/VZLfxs")
                 ]
             ]
 
@@ -791,7 +791,7 @@ Contact @VZLfxs for support & inquiries
 
         except Exception as e:
             logger.error(f"Error in about command: {e}")
-            await message.reply("ℹ️ VBot v2.0.0 by Vzoel Fox's")
+            await message.reply("VBot v2.0.0 by Vzoel Fox's")
 
     async def _handle_music_command(self, message, parts, audio_only=True):
         """Handle music download/stream commands"""
@@ -818,17 +818,34 @@ Contact @VZLfxs for support & inquiries
 
             # Show animated processing message
             media_type = "audio" if audio_only else "video"
-            status_msg = await message.reply(f"🔍 Searching for {media_type}...")
+            status_msg = await message.reply(f"Searching for {media_type}...")
 
             # Delegate to music manager
-            result = await self.music_manager.handle_play(
+            result = await self.music_manager.play_stream(
                 message.chat_id,
                 query,
-                audio_only=audio_only,
-                requester_id=message.sender_id
+                message.sender_id,
+                audio_only=audio_only
             )
 
-            await status_msg.edit(result)
+            # Format result message
+            if result.get('success'):
+                if result.get('queued'):
+                    response = f"**Added to queue (Position {result['position']})**\n\n"
+                    response += f"**Title:** {result['song'].get('title', 'Unknown')}\n"
+                    response += f"**Duration:** {result['song'].get('duration_string', 'Unknown')}"
+                else:
+                    response = f"**Now Playing**\n\n"
+                    response += f"**Title:** {result['song'].get('title', 'Unknown')}\n"
+                    response += f"**Duration:** {result['song'].get('duration_string', 'Unknown')}"
+
+                if result.get('streaming'):
+                    response += f"\n**Mode:** Streaming"
+
+                await status_msg.edit(response)
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                await status_msg.edit(f"**Error:** {error_msg}")
 
         except Exception as e:
             logger.error(f"Music command error: {e}", exc_info=True)
