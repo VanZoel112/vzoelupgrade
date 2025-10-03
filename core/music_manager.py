@@ -161,6 +161,11 @@ class MusicManager:
         else:
             ydl_opts.update({"format": "bv*+ba/b"})
 
+        if config.YOUTUBE_COOKIES_FROM_BROWSER:
+            ydl_opts["cookiesfrombrowser"] = (config.YOUTUBE_COOKIES_FROM_BROWSER,)
+        elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+            ydl_opts["cookiefile"] = config.YOUTUBE_COOKIES_FILE
+
         def _download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -234,10 +239,20 @@ class MusicManager:
                     # Use YouTube URL for streaming
                     youtube_url = song_info.get('webpage_url')
 
+                    # Build yt-dlp parameters with cookies
+                    ytdlp_params = []
+                    if config.YOUTUBE_COOKIES_FROM_BROWSER:
+                        ytdlp_params.append(f'--cookies-from-browser {config.YOUTUBE_COOKIES_FROM_BROWSER}')
+                    elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+                        ytdlp_params.append(f'--cookies {config.YOUTUBE_COOKIES_FILE}')
+
+                    ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
+
                     # Create MediaStream with YouTube URL
                     media_stream_kwargs = {
                         'media_path': youtube_url,
-                        'audio_parameters': AudioQuality.HIGH
+                        'audio_parameters': AudioQuality.HIGH,
+                        'ytdlp_parameters': ytdlp_parameters
                     }
 
                     if audio_only:
