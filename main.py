@@ -1433,6 +1433,11 @@ Contact @VZLfxs for support & inquiries
                 )
                 return
 
+            # Prevent locking bot developers/owners
+            if self.auth_manager.is_developer(target_user_id) or self.auth_manager.is_owner(target_user_id):
+                await message.reply("**Error:** You cannot lock bot developers or owners.")
+                return
+
             # Get reason if provided
             reason = "Locked by admin"
             if len(parts) > 2:
