@@ -10,8 +10,10 @@ Version: 2.0.0 Python
 import asyncio
 import logging
 import sys
-from pathlib import Path
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Optional
 
 # Import advanced logging system
 from core.logger import setup_logging, vbot_logger
@@ -34,11 +36,20 @@ from core.emoji_manager import EmojiManager
 from core.music_manager import MusicManager
 from core.database import Database
 from core.branding import VBotBranding
+from core.plugin_loader import PluginLoader
 from modules.lock_manager import LockManager
 from modules.tag_manager import TagManager
 from modules.welcome_manager import WelcomeManager
 from modules.github_sync import GitHubSync
 from modules.privacy_manager import PrivacyManager
+
+
+@dataclass
+class CommandStatus:
+    """Context information for an in-flight command."""
+
+    start_time: datetime
+    status_message: Optional[object] = None
 
 
 class VBot:
@@ -63,6 +74,11 @@ class VBot:
         self.welcome_manager = WelcomeManager(self.database)
         self.github_sync = GitHubSync()
         self.privacy_manager = PrivacyManager()
+        self._command_context: Dict[int, CommandStatus] = {}
+        self.plugin_loader = PluginLoader(
+            enabled_plugins=getattr(config, "ENABLED_PLUGINS", None),
+            disabled_plugins=getattr(config, "DISABLED_PLUGINS", None),
+        )
 
     async def initialize(self):
         """Initialize VBot"""
@@ -122,6 +138,13 @@ class VBot:
 
             # Setup bot commands
             await self._setup_bot_commands()
+
+            # Load plugins dynamically
+            loaded_plugins = await self.plugin_loader.load_plugins(self)
+            if loaded_plugins:
+                logger.info("Loaded plugins: %s", ", ".join(loaded_plugins))
+            else:
+                logger.info("No plugins loaded")
 
             logger.info("VBot initialization complete")
             return True
@@ -208,7 +231,9 @@ class VBot:
     async def _handle_command(self, message):
         """Handle bot commands"""
         start_time = datetime.now()
-        setattr(message, "_command_start_time", start_time)
+        message_id = getattr(message, "id", None)
+        if message_id is not None:
+            self._command_context[message_id] = CommandStatus(start_time=start_time)
         command_text = message.text.lower()
 
         try:
@@ -248,8 +273,12 @@ class VBot:
                 return
 
             # Pre-run visual phases
-            status_message = await self._run_command_edit_phases(message, command)
-            setattr(message, "_command_status_message", status_message)
+            status_message = None
+            if message_id is not None:
+                status_message = await self._run_command_edit_phases(message, command)
+                command_status = self._command_context.get(message_id)
+                if command_status:
+                    command_status.status_message = status_message
 
             # Route commands
             await self._route_command(message, command, command_parts)
@@ -281,7 +310,8 @@ class VBot:
                 error=str(e)
             )
 
-            status_message = getattr(message, "_command_status_message", None)
+            command_status = self._command_context.get(message_id) if message_id is not None else None
+            status_message = command_status.status_message if command_status else None
             if status_message:
                 try:
                     await status_message.edit(
@@ -291,10 +321,15 @@ class VBot:
                     logger.debug(f"Failed to update status message: {edit_error}")
 
         finally:
-            if hasattr(message, "_command_status_message"):
-                delattr(message, "_command_status_message")
-            if hasattr(message, "_command_start_time"):
-                delattr(message, "_command_start_time")
+            self._finalize_command_status(message_id)
+
+    def _finalize_command_status(self, message_id: Optional[int]):
+        """Remove command context for a completed message."""
+
+        if message_id is None:
+            return
+
+        self._command_context.pop(message_id, None)
 
     async def _route_command(self, message, command, parts):
         """Route commands to appropriate handlers"""
@@ -432,7 +467,9 @@ class VBot:
 
     async def _handle_ping_command(self, message):
         """Handle /ping command accessible to all roles"""
-        status_message = getattr(message, "_command_status_message", None)
+        message_id = getattr(message, "id", None)
+        command_status = self._command_context.get(message_id) if message_id is not None else None
+        status_message = command_status.status_message if command_status else None
 
         now = datetime.now(timezone.utc)
         message_time = message.date
@@ -441,10 +478,9 @@ class VBot:
 
         latency_ms = (now - message_time).total_seconds() * 1000
 
-        start_time = getattr(message, "_command_start_time", None)
         processing_ms = None
-        if isinstance(start_time, datetime):
-            processing_ms = (datetime.now() - start_time).total_seconds() * 1000
+        if command_status and isinstance(command_status.start_time, datetime):
+            processing_ms = (datetime.now() - command_status.start_time).total_seconds() * 1000
 
         uptime_text = "Unknown"
         if isinstance(self.start_time, datetime):

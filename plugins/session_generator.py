@@ -285,8 +285,13 @@ class SessionGenerator:
                 del generation_state[event.sender_id]
 
 
-def setup(bot_client):
+def setup(bot):
     """Setup session generator handlers"""
+    bot_client = getattr(bot, "client", bot)
+    if bot_client is None:
+        logger.warning("Session Generator plugin skipped: bot has no client instance")
+        return
+
     generator = SessionGenerator(bot_client)
 
     @bot_client.on(events.NewMessage(pattern=r'^/gensession$'))
@@ -300,6 +305,8 @@ def setup(bot_client):
         await generator.handle_message(event)
 
     # Export generator for callback use
-    bot_client.session_generator = generator
+    setattr(bot, "session_generator", generator)
+    if bot_client is not bot:
+        setattr(bot_client, "session_generator", generator)
 
     logger.info("✅ Session Generator plugin loaded")
