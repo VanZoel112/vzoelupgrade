@@ -157,16 +157,46 @@ DOWNLOAD_PATH = os.getenv("DOWNLOAD_PATH", "downloads/")
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(50 * 1024 * 1024)))  # 50MB
 AUDIO_QUALITY = os.getenv("AUDIO_QUALITY", "bestaudio[ext=m4a]/bestaudio")
 
-# YouTube Cookies (REQUIRED - helps bypass bot detection)
-# Option 1: Use browser cookies (recommended for local)
+# ==============================================
+# ASSISTANT ACCOUNT (Voice Chat Streaming)
+# ==============================================
+# Assistant account is a separate Telegram user account that will:
+# - Join voice chats in groups
+# - Stream audio/video when you use /play or /vplay commands
+# - Handle all voice chat operations (bot can't join VC directly)
+#
+# How to get STRING_SESSION:
+# 1. Use /gensession command in bot private chat
+# 2. Or run: python genstring.py (if available)
+# 3. Enter API_ID, API_HASH, phone number, and OTP
+# 4. Copy the session string to .env file
+#
+# IMPORTANT:
+# - Use a DIFFERENT phone number from the bot owner
+# - This account will appear in voice chats
+# - Keep this session string SECRET (full account access)
+# - Leave empty ("") to disable voice chat streaming (download-only mode)
+STRING_SESSION = os.getenv("STRING_SESSION", "")
+
+# ==============================================
+# YOUTUBE COOKIES (Bypass Age Restriction & Bot Detection)
+# ==============================================
+# YouTube may block requests from bots/servers. Cookies help bypass this.
+#
+# Option 1: Browser Cookies (Recommended for local development)
+# - Automatically extract cookies from your browser
+# - Supported: chrome, firefox, edge, opera, brave, etc.
+# - Example: YOUTUBE_COOKIES_FROM_BROWSER="chrome"
 YOUTUBE_COOKIES_FROM_BROWSER = os.getenv("YOUTUBE_COOKIES_FROM_BROWSER", "")
-# Option 2: Use cookies file (recommended for server)
+
+# Option 2: Cookies File (Recommended for production/server)
+# - Export cookies from browser to file
+# - Use browser extension: "Get cookies.txt" or "cookies.txt"
+# - Save as youtube_cookies.txt in project root
+# - Example: YOUTUBE_COOKIES_FILE="youtube_cookies.txt"
 YOUTUBE_COOKIES_FILE = os.getenv("YOUTUBE_COOKIES_FILE", "youtube_cookies.txt")
 
-# Assistant Account (for voice chat streaming)
-# Generate using: .gensession command in bot PM or run genstring.py
-# Leave empty ("") to disable streaming mode (download mode only)
-STRING_SESSION = os.getenv("STRING_SESSION", "")
+# NOTE: If both are empty, yt-dlp will use default (may fail on restricted videos)
 
 # Voice chat behaviour
 VOICE_CHAT_AUTO_START = _get_bool("VOICE_CHAT_AUTO_START", True)  # Automatically start VC if none active
