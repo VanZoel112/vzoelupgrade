@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 
 # Import advanced logging system
 from core.logger import setup_logging, vbot_logger
@@ -1299,6 +1300,11 @@ Contact @VZLfxs for support & inquiries
                     response = self._format_music_download_response(result)
                     caption = VBotBranding.wrap_message(response, include_footer=False)
                     await status_msg.edit(caption)
+                    buttons = self._build_music_control_buttons(message.chat_id)
+                    await status_msg.edit(response, buttons=buttons)
+                else:
+                    response = self._format_music_download_response(result)
+                    await status_msg.edit(response)
 
                     file_path = result.get('file_path')
                     if file_path:
@@ -1805,6 +1811,7 @@ Contact @VZLfxs for support & inquiries
                     await message.reply(
                         "**Error:** Protected account detected but failed to apply the automatic lock."
                     )
+                await message.reply("**Error:** You cannot lock bot developers or owners.")
                 return
 
             # Get reason if provided
