@@ -629,7 +629,6 @@ class MusicManager:
         }
 
         if song_entry.get('audio_only', True):
-            media_stream_kwargs['video_parameters'] = None
             media_stream_kwargs['video_flags'] = MediaStream.Flags.IGNORE
         else:
             media_stream_kwargs['video_parameters'] = VideoQuality.HD_720p
