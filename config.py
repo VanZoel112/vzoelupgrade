@@ -156,6 +156,7 @@ MUSIC_ENABLED = _get_bool("MUSIC_ENABLED", True)
 DOWNLOAD_PATH = os.getenv("DOWNLOAD_PATH", "downloads/")
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(50 * 1024 * 1024)))  # 50MB
 AUDIO_QUALITY = os.getenv("AUDIO_QUALITY", "bestaudio[ext=m4a]/bestaudio")
+MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "")
 
 # ==============================================
 # ASSISTANT ACCOUNT (Voice Chat Streaming)
@@ -242,6 +243,8 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # Your GitHub personal access toke
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "")  # Format: username/repo
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 GITHUB_AUTO_COMMIT = _get_bool("GITHUB_AUTO_COMMIT", True)
+GITHUB_AUTO_PUSH = _get_bool("GITHUB_AUTO_PUSH", False)
+GITHUB_AUTO_PUSH_INTERVAL = int(os.getenv("GITHUB_AUTO_PUSH_INTERVAL", "1200"))
 
 
 # ==============================================
