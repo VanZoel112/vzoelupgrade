@@ -83,7 +83,15 @@ class MusicManager:
                 self.streaming_available = False
 
     async def start(self):
-        """Placeholder for any async initialisation if needed."""
+        """Initialise background clients such as PyTgCalls."""
+        if self.pytgcalls:
+            try:
+                await self.pytgcalls.start()
+                logger.info("PyTgCalls client started")
+            except Exception as exc:
+                logger.error(f"Failed to start PyTgCalls client: {exc}")
+                self.streaming_available = False
+                self.pytgcalls = None
         return True
 
     # ---------------------------------------------------------------------
@@ -207,6 +215,8 @@ class MusicManager:
             if not song_info:
                 return {'success': False, 'error': 'Song not found'}
 
+            song_entry = self._build_song_entry(song_info, audio_only)
+
             # STREAMING MODE - if py-tgcalls available
             if self.streaming_available and self.pytgcalls:
                 requested_mode = 'audio' if audio_only else 'video'
@@ -217,8 +227,6 @@ class MusicManager:
                         'success': False,
                         'error': 'Different media type already playing. Use /stop before switching between audio and video.'
                     }
-
-                song_entry = {**song_info, 'audio_only': audio_only}
 
                 # Check if already playing in this chat
                 if chat_id in self.active_calls and self.active_calls[chat_id]:
@@ -236,49 +244,9 @@ class MusicManager:
 
                 # Join voice chat and play
                 try:
-                    # Use YouTube URL for streaming
-                    youtube_url = song_info.get('webpage_url')
+                    await self._play_stream_entry(chat_id, song_entry)
 
-                    # Build yt-dlp parameters with cookies
-                    ytdlp_params = []
-                    if config.YOUTUBE_COOKIES_FROM_BROWSER:
-                        ytdlp_params.append(f'--cookies-from-browser {config.YOUTUBE_COOKIES_FROM_BROWSER}')
-                    elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
-                        ytdlp_params.append(f'--cookies {config.YOUTUBE_COOKIES_FILE}')
-
-                    ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
-
-                    # Create MediaStream with YouTube URL
-                    media_stream_kwargs = {
-                        'media_path': youtube_url,
-                        'audio_parameters': AudioQuality.HIGH,
-                        'ytdlp_parameters': ytdlp_parameters
-                    }
-
-                    if audio_only:
-                        media_stream_kwargs['video_parameters'] = None
-                        media_stream_kwargs['video_flags'] = MediaStream.Flags.IGNORE
-                    else:
-                        media_stream_kwargs['video_parameters'] = VideoQuality.HD_720p
-                        media_stream_kwargs['video_flags'] = MediaStream.Flags.AUTO_DETECT
-
-                    media_stream = MediaStream(**media_stream_kwargs)
-
-                    # Build group call config
-                    group_config = await self._build_group_call_config(chat_id)
-
-                    # Play in voice chat
-                    await self.pytgcalls.play(
-                        chat_id,
-                        media_stream,
-                        config=group_config
-                    )
-
-                    self.active_calls[chat_id] = True
-                    self.current_song[chat_id] = {**song_entry}
-                    self.stream_mode[chat_id] = requested_mode
-
-                    logger.info(f"Started streaming in chat {chat_id}: {song_info['title']}")
+                    logger.info(f"Started streaming in chat {chat_id}: {song_entry['title']}")
 
                     return {
                         'success': True,
@@ -294,8 +262,6 @@ class MusicManager:
 
             # DOWNLOAD MODE - fallback if streaming not available
             logger.info("Using download mode (streaming not available)")
-
-            song_entry = {**song_info, 'audio_only': audio_only}
 
             # Check if queue exists
             if chat_id in self.queues and len(self.queues[chat_id]) > 0:
@@ -342,6 +308,8 @@ class MusicManager:
             if chat_id in self.current_song:
                 del self.current_song[chat_id]
             self.stream_mode.pop(chat_id, None)
+            self.paused.pop(chat_id, None)
+            self.loop_mode.pop(chat_id, None)
 
             return True
         except Exception as e:
@@ -431,62 +399,22 @@ class MusicManager:
     async def skip_song(self, chat_id: int) -> Dict:
         """Skip to next song in queue"""
         try:
-            if chat_id not in self.queues or len(self.queues[chat_id]) == 0:
-                # No songs in queue
+            if not self.streaming_available or not self.pytgcalls:
+                return {'success': False, 'error': 'Streaming not available'}
+
+            next_song = self._dequeue_next_song(chat_id)
+
+            if not next_song:
                 await self.stop_stream(chat_id)
-                return {'success': False, 'error': 'No songs in queue'}
+                return {'success': False, 'error': 'Queue empty'}
 
-            # Get next song
-            next_song = self.queues[chat_id].pop(0)
-            audio_only = next_song.get('audio_only', True)
+            await self._play_stream_entry(chat_id, next_song)
 
-            # Stop current song
-            if self.streaming_available and chat_id in self.active_calls:
-                await self.pytgcalls.leave_call(chat_id)
-                self.active_calls.pop(chat_id, None)
-
-            # Play next song
-            if self.streaming_available and self.pytgcalls:
-                youtube_url = next_song.get('webpage_url')
-
-                # Build yt-dlp parameters
-                ytdlp_params = []
-                if config.YOUTUBE_COOKIES_FROM_BROWSER:
-                    ytdlp_params.append(f'--cookies-from-browser {config.YOUTUBE_COOKIES_FROM_BROWSER}')
-                elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
-                    ytdlp_params.append(f'--cookies {config.YOUTUBE_COOKIES_FILE}')
-
-                ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
-
-                media_stream_kwargs = {
-                    'media_path': youtube_url,
-                    'audio_parameters': AudioQuality.HIGH,
-                    'ytdlp_parameters': ytdlp_parameters
-                }
-
-                if audio_only:
-                    media_stream_kwargs['video_parameters'] = None
-                    media_stream_kwargs['video_flags'] = MediaStream.Flags.IGNORE
-                else:
-                    media_stream_kwargs['video_parameters'] = VideoQuality.HD_720p
-                    media_stream_kwargs['video_flags'] = MediaStream.Flags.AUTO_DETECT
-
-                media_stream = MediaStream(**media_stream_kwargs)
-
-                group_config = await self._build_group_call_config(chat_id)
-                await self.pytgcalls.play(chat_id, media_stream, config=group_config)
-
-                self.active_calls[chat_id] = True
-                self.current_song[chat_id] = next_song
-                self.stream_mode[chat_id] = 'audio' if audio_only else 'video'
-
-                return {
-                    'success': True,
-                    'song': next_song,
-                    'remaining': len(self.queues[chat_id])
-                }
-
-            return {'success': False, 'error': 'Streaming not available'}
+            return {
+                'success': True,
+                'song': next_song,
+                'remaining': len(self.queues.get(chat_id, []))
+            }
 
         except Exception as e:
             logger.error(f"Error skipping song: {e}")
@@ -504,3 +432,235 @@ class MusicManager:
         except Exception as e:
             logger.error(f"Error shuffling queue: {e}")
             return False
+
+    # ------------------------------------------------------------------
+    # Public command helpers used by bot handlers
+    # ------------------------------------------------------------------
+
+    def _build_song_entry(self, info: Dict, audio_only: bool) -> Dict:
+        """Normalise song information for queue handling."""
+        entry = {
+            'title': info.get('title'),
+            'url': info.get('url') or info.get('webpage_url'),
+            'webpage_url': info.get('webpage_url') or info.get('original_url') or info.get('url'),
+            'duration': info.get('duration'),
+            'uploader': info.get('uploader'),
+            'thumbnail': info.get('thumbnail'),
+            'audio_only': audio_only,
+        }
+        entry['duration_string'] = self._format_duration(entry.get('duration'))
+        return entry
+
+    def _format_duration(self, duration: Optional[int]) -> str:
+        """Return hh:mm:ss/mm:ss formatted duration string."""
+        if duration in (None, ""):
+            return "Unknown"
+        try:
+            seconds = int(duration)
+        except (TypeError, ValueError):
+            return "Unknown"
+        if seconds < 0:
+            return "Unknown"
+        minutes, sec = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours:02d}:{minutes:02d}:{sec:02d}"
+        return f"{minutes:02d}:{sec:02d}"
+
+    async def pause(self, chat_id: int) -> str:
+        """Pause the active stream."""
+        if not self.streaming_available or not self.pytgcalls:
+            return "❌ Pause only available in streaming mode"
+        if chat_id not in self.active_calls:
+            return "❌ Nothing is playing"
+        if self.paused.get(chat_id):
+            return "⚠️ Stream already paused"
+        try:
+            await self.pytgcalls.pause(chat_id)
+            self.paused[chat_id] = True
+            return "⏸️ Paused"
+        except Exception as exc:
+            logger.error(f"Pause failed in chat {chat_id}: {exc}")
+            return f"❌ Failed to pause: {exc}"
+
+    async def resume(self, chat_id: int) -> str:
+        """Resume a paused stream."""
+        if not self.streaming_available or not self.pytgcalls:
+            return "❌ Resume only available in streaming mode"
+        if chat_id not in self.active_calls:
+            return "❌ Nothing is playing"
+        if not self.paused.get(chat_id):
+            return "⚠️ Stream is already playing"
+        try:
+            await self.pytgcalls.resume(chat_id)
+            self.paused[chat_id] = False
+            return "▶️ Resumed"
+        except Exception as exc:
+            logger.error(f"Resume failed in chat {chat_id}: {exc}")
+            return f"❌ Failed to resume: {exc}"
+
+    async def stop(self, chat_id: int) -> str:
+        """Stop playback and clear queue."""
+        stopped = await self.stop_stream(chat_id)
+        if stopped:
+            return "⏹️ Stopped playback and cleared queue"
+        return "❌ Nothing to stop"
+
+    async def skip(self, chat_id: int) -> str:
+        """Skip to the next song in queue."""
+        result = await self.skip_song(chat_id)
+        if result.get('success'):
+            song = result.get('song', {})
+            title = song.get('title', 'Unknown')
+            remaining = result.get('remaining', 0)
+            return f"⏭️ Skipped to **{title}**\n**Queue:** {remaining} remaining"
+        return f"❌ {result.get('error', 'Unable to skip')}"
+
+    async def show_queue(self, chat_id: int) -> str:
+        """Return a formatted queue list."""
+        current = self.current_song.get(chat_id)
+        queue = self.queues.get(chat_id, [])
+        if not current and not queue:
+            return "📭 Queue kosong"
+
+        lines = ["**🎶 Music Queue**"]
+        loop_mode = self.loop_mode.get(chat_id, 'off')
+        if loop_mode != 'off':
+            loop_label = {
+                'current': 'current track',
+                'all': 'entire queue'
+            }.get(loop_mode, loop_mode)
+            lines.append(f"**Loop:** {loop_label}")
+
+        if current:
+            lines.append(
+                f"**Now Playing:** {current.get('title', 'Unknown')} ({current.get('duration_string', 'Unknown')})"
+            )
+        if queue:
+            lines.append("\n**Up Next:**")
+            for index, item in enumerate(queue, start=1):
+                lines.append(
+                    f"{index}. {item.get('title', 'Unknown')} ({item.get('duration_string', 'Unknown')})"
+                )
+        return "\n".join(lines)
+
+    async def shuffle(self, chat_id: int) -> str:
+        """Shuffle queue entries."""
+        if chat_id not in self.queues or len(self.queues[chat_id]) < 2:
+            return "❌ Queue kurang dari 2 lagu"
+        success = await self.shuffle_queue(chat_id)
+        return "🔀 Queue diacak" if success else "❌ Gagal mengacak queue"
+
+    async def set_loop(self, chat_id: int, mode: str) -> str:
+        """Configure loop behaviour."""
+        valid_modes = {'off', 'current', 'all'}
+        current_mode = self.loop_mode.get(chat_id, 'off')
+
+        if mode == 'toggle':
+            order = ['off', 'current', 'all']
+            try:
+                next_index = (order.index(current_mode) + 1) % len(order)
+            except ValueError:
+                next_index = 0
+            new_mode = order[next_index]
+        elif mode in {'single', 'song', 'track'}:
+            new_mode = 'current'
+        elif mode in {'queue'}:
+            new_mode = 'all'
+        elif mode in valid_modes:
+            new_mode = mode
+        else:
+            return "❌ Mode loop tidak dikenal. Gunakan: off/current/all"
+
+        if new_mode == 'off':
+            self.loop_mode.pop(chat_id, None)
+        else:
+            self.loop_mode[chat_id] = new_mode
+
+        human_readable = {
+            'off': 'Loop dimatikan',
+            'current': 'Loop lagu saat ini',
+            'all': 'Loop seluruh queue'
+        }
+        return f"🔁 {human_readable.get(new_mode, new_mode)}"
+
+    async def seek(self, chat_id: int, seconds: int) -> str:
+        """Seek is not available because PyTgCalls does not expose this yet."""
+        return "❌ Fitur seek belum didukung"
+
+    async def set_volume(self, chat_id: int, volume: int) -> str:
+        """Adjust stream volume (0-200)."""
+        if not self.streaming_available or not self.pytgcalls:
+            return "❌ Volume hanya bisa diubah saat streaming"
+        if chat_id not in self.active_calls:
+            return "❌ Tidak ada stream aktif"
+        try:
+            await self.pytgcalls.change_volume_call(chat_id, volume)
+            self.volume[chat_id] = volume
+            return f"🔊 Volume diatur ke {volume}%"
+        except Exception as exc:
+            logger.error(f"Failed to set volume in chat {chat_id}: {exc}")
+            return f"❌ Gagal mengatur volume: {exc}"
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    async def _play_stream_entry(self, chat_id: int, song_entry: Dict):
+        """Play a prepared song entry via PyTgCalls."""
+        if not self.pytgcalls:
+            raise RuntimeError("Streaming client is not available")
+
+        youtube_url = song_entry.get('webpage_url')
+
+        # Build yt-dlp parameters with cookies
+        ytdlp_params = []
+        if config.YOUTUBE_COOKIES_FROM_BROWSER:
+            ytdlp_params.append(f'--cookies-from-browser {config.YOUTUBE_COOKIES_FROM_BROWSER}')
+        elif config.YOUTUBE_COOKIES_FILE and os.path.exists(config.YOUTUBE_COOKIES_FILE):
+            ytdlp_params.append(f'--cookies {config.YOUTUBE_COOKIES_FILE}')
+
+        ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
+
+        media_stream_kwargs = {
+            'media_path': youtube_url,
+            'audio_parameters': AudioQuality.HIGH,
+            'ytdlp_parameters': ytdlp_parameters
+        }
+
+        if song_entry.get('audio_only', True):
+            media_stream_kwargs['video_parameters'] = None
+            media_stream_kwargs['video_flags'] = MediaStream.Flags.IGNORE
+        else:
+            media_stream_kwargs['video_parameters'] = VideoQuality.HD_720p
+            media_stream_kwargs['video_flags'] = MediaStream.Flags.AUTO_DETECT
+
+        media_stream = MediaStream(**media_stream_kwargs)
+
+        group_config = await self._build_group_call_config(chat_id)
+        await self.pytgcalls.play(chat_id, media_stream, config=group_config)
+
+        self.active_calls[chat_id] = True
+        self.current_song[chat_id] = {**song_entry}
+        self.stream_mode[chat_id] = 'audio' if song_entry.get('audio_only', True) else 'video'
+        self.paused[chat_id] = False
+
+    def _dequeue_next_song(self, chat_id: int) -> Optional[Dict]:
+        """Fetch the next song taking loop settings into account."""
+        queue = self.queues.get(chat_id, [])
+        current = self.current_song.get(chat_id)
+        loop_mode = self.loop_mode.get(chat_id, 'off')
+
+        if loop_mode == 'current' and current:
+            return {**current}
+
+        if queue:
+            next_song = queue.pop(0)
+            if loop_mode == 'all' and current:
+                queue.append({**current})
+            return next_song
+
+        if loop_mode == 'all' and current:
+            return {**current}
+
+        return None
