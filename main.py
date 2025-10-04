@@ -115,6 +115,7 @@ class VBot:
         self._music_logo_file_path = self._coerce_music_logo_path(
             getattr(config, "MUSIC_LOGO_FILE_PATH", "")
         )
+        self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
         self._project_root = Path(__file__).resolve().parent
         try:
             self._config_root = Path(config.__file__).resolve().parent
@@ -524,34 +525,34 @@ class VBot:
                     )
                     await event.edit(VBotBranding.get_branding_missing_notice())
 
-            # Session generator callback
-            elif data == "start_gensession":
-                # Check if in private chat
-                if not event.is_private:
-                    await event.answer("Session generator hanya bisa di private chat!", alert=True)
-                    return
-
-                # Redirect to /gensession command
-                me = await self.client.get_me()
-                await event.answer("Starting session generator...")
-                redirect_text = (
-                    "**Session String Generator**\n\n"
-                    "Untuk memulai, silakan ketik:\n"
-                    "`/gensession`\n\n"
-                    "atau klik tombol di bawah untuk memulai."
-                )
-                buttons = [[Button.inline("Start Generator", b"run_gensession")]]
-                await event.edit(redirect_text, buttons=buttons)
-
-            # Run session generator
-            elif data == "run_gensession":
-                if hasattr(self, 'session_generator'):
-                    # Create a mock event for the generator
-                    await event.answer("Memulai generator...")
-                    # Trigger the generator
-                    await event.respond("/gensession")
-                else:
-                    await event.answer("Session generator plugin tidak aktif!", alert=True)
+            # Session generator callbacks (disabled - use /gensession command directly)
+            # elif data == "start_gensession":
+            #     # Check if in private chat
+            #     if not event.is_private:
+            #         await event.answer("Session generator hanya bisa di private chat!", alert=True)
+            #         return
+            #
+            #     # Redirect to /gensession command
+            #     me = await self.client.get_me()
+            #     await event.answer("Starting session generator...")
+            #     redirect_text = (
+            #         "**Session String Generator**\n\n"
+            #         "Untuk memulai, silakan ketik:\n"
+            #         "`/gensession`\n\n"
+            #         "atau klik tombol di bawah untuk memulai."
+            #     )
+            #     buttons = [[Button.inline("Start Generator", b"run_gensession")]]
+            #     await event.edit(redirect_text, buttons=buttons)
+            #
+            # # Run session generator
+            # elif data == "run_gensession":
+            #     if hasattr(self, 'session_generator'):
+            #         # Create a mock event for the generator
+            #         await event.answer("Memulai generator...")
+            #         # Trigger the generator
+            #         await event.respond("/gensession")
+            #     else:
+            #         await event.answer("Session generator plugin tidak aktif!", alert=True)
 
             # Music playback callbacks
             elif data.startswith("music:"):
@@ -965,11 +966,8 @@ By Vzoel Fox's
 
             # Different buttons for private vs group
             if message.is_private:
-                # Private chat buttons: Generate String, Add to Group, Help
+                # Private chat buttons: Add to Group, Help
                 buttons = [
-                    [
-                        Button.inline("Generate String", b"start_gensession"),
-                    ],
                     [
                         Button.url("Add to Group", f"https://t.me/{bot_username}?startgroup=true"),
                         Button.inline("Help", f"help:page:0".encode())
@@ -1050,7 +1048,6 @@ By Vzoel Fox's
                     ("`/help`", "Buka panduan interaktif ini"),
                     ("`/about`", "Informasi detail mengenai bot"),
                     ("`/ping`", "Cek latensi & uptime"),
-                    ("`/gensession`", "Mulai generator string session"),
                 ],
             },
         ]
@@ -1472,6 +1469,8 @@ Contact @VZLfxs for support & inquiries
         if file_path is not None:
             self._music_logo_file_path = self._coerce_music_logo_path(file_path)
             config.MUSIC_LOGO_FILE_PATH = self._music_logo_file_path
+        self._music_logo_file_id = self._coerce_music_logo_id(file_id)
+        config.MUSIC_LOGO_FILE_ID = self._music_logo_file_id
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
@@ -1490,6 +1489,8 @@ Contact @VZLfxs for support & inquiries
 
         if file_id is None and file_path is None:
             return
+
+        file_id = self._coerce_music_logo_id(file_id)
 
         env_path = Path(".env").resolve()
         if file_id is not None:
@@ -1648,6 +1649,10 @@ Contact @VZLfxs for support & inquiries
         """Return unique candidate paths to try for a configured logo value."""
 
         trimmed = self._coerce_music_logo_path(path_value)
+    def _resolve_music_logo_local_candidates(self, path_value: str) -> List[Path]:
+        """Return unique candidate paths to try for a configured logo value."""
+
+        trimmed = path_value.strip()
         if not trimmed:
             return []
 
@@ -1850,6 +1855,7 @@ Contact @VZLfxs for support & inquiries
             config, "MUSIC_LOGO_FILE_ID", ""
         )
         logo_id = self._coerce_music_logo_id(raw_logo_id)
+        logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
         if logo_id:
             try:
                 await self.client.send_file(chat_id, logo_id, **send_kwargs)
@@ -1866,6 +1872,16 @@ Contact @VZLfxs for support & inquiries
             config, "MUSIC_LOGO_FILE_PATH", ""
         )
         logo_path_value = self._coerce_music_logo_path(configured_path)
+
+
+        logo_path_value = self._coerce_music_logo_path(
+            getattr(config, "MUSIC_LOGO_FILE_PATH", "")
+        )
+
+
+        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "").strip()
+        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "")
+        logo_path = Path(logo_path_value).expanduser() if logo_path_value else None
 
         async def _send_fallback(source: str) -> bool:
             try:
@@ -1893,6 +1909,14 @@ Contact @VZLfxs for support & inquiries
                 candidate_value = self._coerce_music_logo_path(candidate_value)
                 resolved_candidates = self._resolve_music_logo_local_candidates(
                     candidate_value
+                )
+                normalized_value = (
+                    logo_path_value[7:]
+                    if logo_path_value.startswith("file://")
+                    else logo_path_value
+                )
+                resolved_candidates = self._resolve_music_logo_local_candidates(
+                    normalized_value
                 )
 
                 for candidate in resolved_candidates:
