@@ -26,6 +26,8 @@ except ImportError:
 try:
     from pytgcalls import PyTgCalls
     from pytgcalls.types import MediaStream, AudioQuality, VideoQuality, GroupCallConfig
+    from pytgcalls.types import StreamEnded
+    from pytgcalls.filters import stream_end as StreamEndFilter
     PYTGCALLS_AVAILABLE = True
 except ImportError:
     PYTGCALLS_AVAILABLE = False
@@ -34,6 +36,8 @@ except ImportError:
     AudioQuality = None
     VideoQuality = None
     GroupCallConfig = None
+    StreamEnded = None
+    StreamEndFilter = None
 
 
 class MusicManager:
@@ -65,6 +69,7 @@ class MusicManager:
         self.paused: Dict[int, bool] = {}
         self.loop_mode: Dict[int, str] = {}  # 'off', 'current', 'all'
         self.volume: Dict[int, int] = {}  # 0-200
+        self._ignored_stream_ends: Dict[int, int] = {}
 
         # Rate limiting
         self.last_request: Dict[int, float] = {}
@@ -78,6 +83,7 @@ class MusicManager:
             try:
                 self.pytgcalls = PyTgCalls(self.assistant_client)
                 logger.info("PyTgCalls initialized successfully")
+                self._register_stream_events()
             except Exception as e:
                 logger.error(f"Failed to initialize PyTgCalls: {e}")
                 self.streaming_available = False
@@ -160,10 +166,17 @@ class MusicManager:
         }
 
         if audio_only:
+            configured_quality = getattr(config, "AUDIO_QUALITY", None)
+            if not configured_quality or configured_quality == "bestaudio[ext=m4a]/bestaudio":
+                configured_quality = "bestaudio/best"
             ydl_opts.update({
-                "format": getattr(config, "AUDIO_QUALITY", "bestaudio[ext=m4a]/bestaudio"),
+                "format": configured_quality,
                 "postprocessors": [
-                    {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "320",
+                    }
                 ],
             })
         else:
@@ -300,16 +313,18 @@ class MusicManager:
         try:
             # Leave voice chat if in streaming mode
             if self.streaming_available and chat_id in self.active_calls:
+                self._ignored_stream_ends[chat_id] = self._ignored_stream_ends.get(chat_id, 0) + 1
                 await self.leave_voice_chat(chat_id)
 
             # Clear queue and current song
-            if chat_id in self.queues:
-                self.queues[chat_id].clear()
-            if chat_id in self.current_song:
-                del self.current_song[chat_id]
+            self.queues.pop(chat_id, None)
+            self.current_song.pop(chat_id, None)
+            self.active_calls.pop(chat_id, None)
             self.stream_mode.pop(chat_id, None)
             self.paused.pop(chat_id, None)
             self.loop_mode.pop(chat_id, None)
+            self.volume.pop(chat_id, None)
+            self._ignored_stream_ends.pop(chat_id, None)
 
             return True
         except Exception as e:
@@ -637,12 +652,17 @@ class MusicManager:
         media_stream = MediaStream(**media_stream_kwargs)
 
         group_config = await self._build_group_call_config(chat_id)
+
+        if not song_entry.get('_autoplay', False) and self.active_calls.get(chat_id):
+            self._ignored_stream_ends[chat_id] = self._ignored_stream_ends.get(chat_id, 0) + 1
+
         await self.pytgcalls.play(chat_id, media_stream, config=group_config)
 
         self.active_calls[chat_id] = True
         self.current_song[chat_id] = {**song_entry}
         self.stream_mode[chat_id] = 'audio' if song_entry.get('audio_only', True) else 'video'
         self.paused[chat_id] = False
+        self.current_song[chat_id].pop('_autoplay', None)
 
     def _dequeue_next_song(self, chat_id: int) -> Optional[Dict]:
         """Fetch the next song taking loop settings into account."""
@@ -663,3 +683,73 @@ class MusicManager:
             return {**current}
 
         return None
+
+    # ------------------------------------------------------------------
+    # Internal event handlers
+    # ------------------------------------------------------------------
+
+    def _register_stream_events(self):
+        """Attach PyTgCalls update listeners for autoplay handling."""
+        if not self.pytgcalls or not StreamEndFilter:
+            return
+
+        @self.pytgcalls.on_update(StreamEndFilter())
+        async def _on_stream_end(_, update: 'StreamEnded'):
+            chat_id = getattr(update, "chat_id", None)
+            if chat_id is None:
+                return
+
+            if chat_id in self._ignored_stream_ends:
+                remaining = self._ignored_stream_ends[chat_id] - 1
+                if remaining > 0:
+                    self._ignored_stream_ends[chat_id] = remaining
+                else:
+                    self._ignored_stream_ends.pop(chat_id, None)
+                logger.debug(
+                    "Ignoring stream end in chat %s (pending manual transition)",
+                    chat_id,
+                )
+                return
+
+            logger.info("Stream ended in chat %s, attempting autoplay", chat_id)
+            asyncio.create_task(self._handle_stream_completion(chat_id))
+
+    async def _handle_stream_completion(self, chat_id: int):
+        """Autoplay the next song or clean up when playback ends."""
+        next_song = self._dequeue_next_song(chat_id)
+
+        if next_song:
+            logger.info(
+                "Autoplaying next track in chat %s: %s",
+                chat_id,
+                next_song.get('title', 'Unknown'),
+            )
+            try:
+                autoplay_entry = {**next_song, '_autoplay': True}
+                await self._play_stream_entry(chat_id, autoplay_entry)
+            except Exception as exc:
+                logger.error(
+                    "Failed to autoplay next track in chat %s: %s",
+                    chat_id,
+                    exc,
+                )
+                await self._finalize_stream(chat_id)
+            return
+
+        logger.info("Queue finished in chat %s. Leaving voice chat.", chat_id)
+        await self._finalize_stream(chat_id)
+
+    async def _finalize_stream(self, chat_id: int):
+        """Reset playback state and leave the voice chat if necessary."""
+        if self.pytgcalls and self.active_calls.get(chat_id):
+            self._ignored_stream_ends[chat_id] = self._ignored_stream_ends.get(chat_id, 0) + 1
+            await self.leave_voice_chat(chat_id)
+
+        self.active_calls.pop(chat_id, None)
+        self.current_song.pop(chat_id, None)
+        self.stream_mode.pop(chat_id, None)
+        self.paused.pop(chat_id, None)
+        self.loop_mode.pop(chat_id, None)
+        self.volume.pop(chat_id, None)
+        self._ignored_stream_ends.pop(chat_id, None)
+        self.queues.pop(chat_id, None)
