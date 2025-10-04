@@ -99,6 +99,10 @@ ENABLE_TAG_SYSTEM=true
 ENABLE_WELCOME_SYSTEM=true
 ENABLE_GITHUB_SYNC=true
 ENABLE_PRIVACY_SYSTEM=true
+
+# Tag system tuning
+TAG_BATCH_SIZE=5
+TAG_DELAY=2.0
 ```
 
 ## Commands 📝
@@ -107,14 +111,15 @@ ENABLE_PRIVACY_SYSTEM=true
 - `/play <song>` - Play music from YouTube
 - `/lock <user>` - Lock user (auto-delete messages)
 - `/unlock <user_id>` - Unlock user
-- `/tag <message>` - Tag all members progressively
-- `/ctag` - Cancel ongoing tag process
+- `/t [batch] <message>` atau `/t` (reply) - Tag semua anggota secara bertahap (alias: `.t`, `+t`)
+- `/c` - Hentikan proses tag massal (alias: `.c`, `+c`)
 
 ### Developer Commands (`.`)
 - `.stats` - Show bot statistics
 - `.setwelcome <message>` - Set welcome message
 - `.welcome on/off` - Toggle welcome system
 - `.privacy` - Toggle privacy mode
+- `.t [batch] <message>` atau `.t` (reply) - Alias admin untuk `/t`
 
 ### Public Commands (`#`)
 - `#help` - Show help message

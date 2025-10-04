@@ -33,6 +33,12 @@ class AuthManager:
         self.developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
         self.admin_chat_ids = set(getattr(config, "ADMIN_CHAT_IDS", []) or [])
         self.enable_public: bool = getattr(config, "ENABLE_PUBLIC_COMMANDS", True)
+        self._tag_command_prefixes = (".", "/", "+")
+        self._admin_tag_commands = {f"{prefix}t" for prefix in self._tag_command_prefixes}
+        self._admin_tag_cancel_commands = {f"{prefix}c" for prefix in self._tag_command_prefixes}
+        self._admin_override_commands = (
+            self._admin_tag_commands | self._admin_tag_cancel_commands
+        )
         self._last_denied_reason: Optional[str] = None
 
     # ------------------------------------------------------------------ #
@@ -127,15 +133,27 @@ class AuthManager:
     # Command helpers
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _normalize_command(message_text: str) -> str:
+        if not message_text:
+            return ""
+        base = message_text.split()[0]
+        if '@' in base:
+            base = base.split('@', 1)[0]
+        return base.lower()
+
     def get_command_type(self, message_text: str) -> Optional[str]:
         """Determine command type based on prefix."""
-        if not message_text:
+        command = self._normalize_command(message_text)
+        if not command:
             return None
-        if message_text.startswith('+'):
-            return "owner"
-        elif message_text.startswith('/'):
+        if command in self._admin_override_commands:
             return "admin"
-        elif message_text.startswith('.'):
+        if command.startswith('+'):
+            return "owner"
+        if command.startswith('/'):
+            return "admin"
+        if command.startswith('.'):
             return "public"
         return None
 
@@ -147,7 +165,7 @@ class AuthManager:
         command_text: str,
     ) -> bool:
         """Main permission checker for commands."""
-        cmd = command_text.split()[0].lower() if command_text else ""
+        cmd = self._normalize_command(command_text)
 
         # Backward-compat: some slash-commands are public
         music_commands = ['/play', '/p', '/music', '/pause', '/resume', '/stop', '/end', '/queue', '/q']
@@ -163,6 +181,12 @@ class AuthManager:
         if command_type == "owner":
             return await self.can_use_owner_command(user_id)
         elif command_type == "admin":
+            if cmd in self._admin_override_commands:
+                return await self.can_use_admin_command(
+                    client,
+                    user_id,
+                    chat_id,
+                )
             allowed = await self.can_use_admin_command(
                 client,
                 user_id,
