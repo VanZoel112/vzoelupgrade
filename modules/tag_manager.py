@@ -127,9 +127,6 @@ class TagManager:
             # Send initial message
             initial_text = self._format_with_branding(
                 f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot..."
-            initial_text = VBotBranding.apply_placeholders(
-                f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot...",
-                plugin_name=self.PLUGIN_NAME,
             )
             message_obj = await client.send_message(
                 chat_id,
@@ -167,13 +164,6 @@ class TagManager:
                 progress_text = (
                     f"{base_message}\n\n{' '.join(mentions)}\n\n"
                     f"Progres oleh {{plugins}} by VBot: {progress}"
-                    f"Progres oleh {{plugins}} by VBot: {progress}",
-                    plugin_name=self.PLUGIN_NAME,
-                )
-
-                updated_text = VBotBranding.apply_placeholders(
-                    progress_text,
-                    plugin_name=self.PLUGIN_NAME,
                 )
 
                 updated_text = self._format_with_branding(progress_text)
@@ -193,9 +183,6 @@ class TagManager:
             # Final message
             final_text = self._format_with_branding(
                 f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot."
-            final_text = VBotBranding.apply_placeholders(
-                f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot.",
-                plugin_name=self.PLUGIN_NAME,
             )
             try:
                 await message_obj.edit(final_text)
@@ -217,9 +204,6 @@ class TagManager:
                 try:
                     cancel_text = self._format_with_branding(
                         f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot."
-                    cancel_text = VBotBranding.apply_placeholders(
-                        f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot.",
-                        plugin_name=self.PLUGIN_NAME,
                     )
                     await session['message_obj'].edit(cancel_text)
                 except Exception:
