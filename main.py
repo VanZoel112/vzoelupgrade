@@ -92,6 +92,9 @@ class VBot:
             enabled_plugins=getattr(config, "ENABLED_PLUGINS", None),
             disabled_plugins=getattr(config, "DISABLED_PLUGINS", None),
         )
+        self._tag_prefixes = (".", "/", "+")
+        self._tag_start_commands = {f"{prefix}t" for prefix in self._tag_prefixes}
+        self._tag_stop_commands = {f"{prefix}c" for prefix in self._tag_prefixes}
         self._help_pages = self._build_help_pages()
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
         self._admin_sync_cache: Dict[int, float] = {}
