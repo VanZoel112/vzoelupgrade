@@ -17,6 +17,8 @@ class VBotBranding:
     HEADER = "**VBot Music – {plugins} by VBot**"
     FOOTER = "**{plugins} by VBot**"
     DEFAULT_PLUGIN_NAME = "VBot"
+    HEADER = "**VBot Music – {{plugins}} by VBot**"
+    FOOTER = "**{{plugins}} by VBot**"
 
     # Loading animation frames
     LOADING_FRAMES = [
