@@ -2955,6 +2955,9 @@ Contact @VZLfxs for support & inquiries
             if not custom_message:
                 custom_message = "Sedang menandai seluruh anggota..."
 
+            custom_message = VBotBranding.apply_placeholders(
+                f"{custom_message}\n\n_{{plugins}} by VBot_",
+                plugin_name=TagManager.PLUGIN_NAME,
             custom_message = (
                 f"{custom_message}\n\n_{{plugins}} by VBot_"
             )

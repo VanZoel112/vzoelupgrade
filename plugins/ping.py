@@ -19,6 +19,7 @@ class PingHandler:
         self.bot = bot
         self.client = getattr(bot, "client", None)
         self.branding = None
+        self.plugin_name = "Ping"
 
         # Try to import branding
         try:
@@ -95,7 +96,11 @@ class PingHandler:
 
             # Format with branding if available
             if self.branding:
-                result_text = self.branding.wrap_message("\n".join(result_lines), include_footer=False)
+                result_text = self.branding.wrap_message(
+                    "\n".join(result_lines),
+                    include_footer=False,
+                    plugin_name=self.plugin_name,
+                )
             else:
                 result_text = "\n".join(result_lines)
                 result_text += "\n\n📱 VBot Python"

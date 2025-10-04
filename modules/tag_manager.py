@@ -12,11 +12,14 @@ import logging
 from typing import Dict, List, Set, Optional
 from telethon.tl.types import Channel, Chat
 import config
+from core.branding import VBotBranding
 
 logger = logging.getLogger(__name__)
 
 class TagManager:
     """Manages progressive tagging of all members"""
+
+    PLUGIN_NAME = "Tag Manager"
 
     def __init__(self):
         
@@ -115,10 +118,12 @@ class TagManager:
             batch_size = session.get('batch_size', 5)
 
             # Send initial message
+            initial_text = VBotBranding.apply_placeholders(
+                f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot...",
+                plugin_name=self.PLUGIN_NAME,
             initial_text = (
                 f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot..."
             )
-            initial_text = f"{base_message}\n\n⏳ Starting tag process..."
             message_obj = await client.send_message(
                 chat_id,
                 initial_text,
@@ -152,8 +157,10 @@ class TagManager:
 
                 # Update message with current batch
                 progress = f"({session['tagged_count'] + len(batch_members)}/{len(members)})"
-                updated_text = (
+                updated_text = VBotBranding.apply_placeholders(
                     f"{base_message}\n\n{' '.join(mentions)}\n\n"
+                    f"Progres oleh {{plugins}} by VBot: {progress}",
+                    plugin_name=self.PLUGIN_NAME,
                     f"Progres oleh {{plugins}} by VBot: {progress}"
                 )
 
@@ -170,6 +177,9 @@ class TagManager:
                 await asyncio.sleep(config.TAG_DELAY)
 
             # Final message
+            final_text = VBotBranding.apply_placeholders(
+                f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot.",
+                plugin_name=self.PLUGIN_NAME,
             final_text = (
                 f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot."
             )
@@ -191,6 +201,9 @@ class TagManager:
             session = self.active_tags.get(chat_id)
             if session and session.get('message_obj'):
                 try:
+                    cancel_text = VBotBranding.apply_placeholders(
+                        f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot.",
+                        plugin_name=self.PLUGIN_NAME,
                     cancel_text = (
                         f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot."
                     )
