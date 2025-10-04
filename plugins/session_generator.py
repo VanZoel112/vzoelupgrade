@@ -29,6 +29,14 @@ class SessionGenerator:
 
     def __init__(self, bot_client):
         self.bot = bot_client
+        self.plugin_name = "Session Generator"
+
+    def _wrap(self, content: str, **kwargs):
+        return VBotBranding.wrap_message(
+            content,
+            plugin_name=self.plugin_name,
+            **kwargs,
+        )
 
     async def start_generation(self, event):
         """Start session generation process"""
@@ -38,7 +46,7 @@ class SessionGenerator:
                 "❌ **Session generator hanya bisa digunakan di Private Chat!**\n\n"
                 "Click button di /start atau ketik /gensession di chat pribadi bot."
             )
-            await event.reply(VBotBranding.wrap_message(content))
+            await event.reply(self._wrap(content))
             return
 
         user_id = event.sender_id
@@ -49,7 +57,7 @@ class SessionGenerator:
                 "⚠️ **Kamu sudah memulai proses generate session!**\n\n"
                 "Gunakan /cancel untuk membatalkan dan mulai ulang."
             )
-            await event.reply(VBotBranding.wrap_message(content))
+            await event.reply(self._wrap(content))
             return
 
         # Initialize state
@@ -70,7 +78,7 @@ class SessionGenerator:
             "Ketik /cancel untuk membatalkan."
         )
 
-        await event.reply(VBotBranding.wrap_message(content, include_footer=False))
+        await event.reply(self._wrap(content, include_footer=False))
 
     async def handle_message(self, event):
         """Handle user messages during generation"""
@@ -87,7 +95,7 @@ class SessionGenerator:
         if text.lower() in ['/cancel', '.cancel']:
             del generation_state[user_id]
             await event.reply(
-                VBotBranding.wrap_message("❌ **Proses dibatalkan.**")
+                self._wrap("❌ **Proses dibatalkan.**")
             )
             return
 
@@ -116,11 +124,11 @@ class SessionGenerator:
             )
 
             await event.reply(
-                VBotBranding.wrap_message(content, include_footer=False)
+                self._wrap(content, include_footer=False)
             )
         except ValueError:
             await event.reply(
-                VBotBranding.wrap_message(
+                self._wrap(
                     "❌ API ID harus berupa angka! Coba lagi:",
                     include_footer=False,
                 )
@@ -138,7 +146,7 @@ class SessionGenerator:
             "(Dengan kode negara, tanpa spasi)"
         )
 
-        await event.reply(VBotBranding.wrap_message(content, include_footer=False))
+        await event.reply(self._wrap(content, include_footer=False))
 
     async def _handle_phone(self, event, state, text):
         """Handle phone number and send OTP"""
@@ -157,7 +165,7 @@ class SessionGenerator:
 
             # Send code
             status_msg = await event.reply(
-                VBotBranding.wrap_message(
+                self._wrap(
                     "📱 **Mengirim kode OTP...**", include_footer=False
                 )
             )
@@ -168,7 +176,7 @@ class SessionGenerator:
             state['step'] = 'otp'
 
             await status_msg.edit(
-                VBotBranding.wrap_message(
+                self._wrap(
                     "✅ **Kode OTP telah dikirim!**\n\n"
                     "**Step 4:** Masukkan **kode OTP** yang kamu terima dari Telegram\n\n"
                     "Format: 12345 (5 digit angka)",
@@ -181,11 +189,11 @@ class SessionGenerator:
                 "❌ **Nomor HP tidak valid!**\n\n"
                 "Pastikan format: +628123456789"
             )
-            await event.reply(VBotBranding.wrap_message(content))
+            await event.reply(self._wrap(content))
         except Exception as e:
             logger.error(f"Error sending code: {e}")
             await event.reply(
-                VBotBranding.wrap_message(f"❌ **Error:** {str(e)}")
+                self._wrap(f"❌ **Error:** {str(e)}")
             )
             if user_id in generation_state:
                 del generation_state[event.sender_id]
@@ -197,7 +205,7 @@ class SessionGenerator:
 
         try:
             status_msg = await event.reply(
-                VBotBranding.wrap_message(
+                self._wrap(
                     "🔐 **Verifikasi kode OTP...**", include_footer=False
                 )
             )
@@ -230,7 +238,7 @@ class SessionGenerator:
             )
 
             await event.reply(
-                VBotBranding.wrap_message(content, include_footer=False)
+                self._wrap(content, include_footer=False)
             )
 
             # Send session string in separate message
@@ -244,7 +252,7 @@ class SessionGenerator:
             )
 
             await event.reply(
-                VBotBranding.wrap_message(content, include_footer=False)
+                self._wrap(content, include_footer=False)
             )
 
             # Cleanup
@@ -256,7 +264,7 @@ class SessionGenerator:
                 "❌ **Kode OTP salah!**\n\n"
                 "Coba lagi atau ketik /cancel untuk membatalkan."
             )
-            await event.reply(VBotBranding.wrap_message(content))
+            await event.reply(self._wrap(content))
         except SessionPasswordNeededError:
             state['step'] = '2fa'
             content = (
@@ -264,12 +272,12 @@ class SessionGenerator:
                 "**Step 5:** Masukkan **password 2FA** kamu"
             )
             await event.reply(
-                VBotBranding.wrap_message(content, include_footer=False)
+                self._wrap(content, include_footer=False)
             )
         except Exception as e:
             logger.error(f"Error signing in: {e}")
             await event.reply(
-                VBotBranding.wrap_message(f"❌ **Error:** {str(e)}")
+                self._wrap(f"❌ **Error:** {str(e)}")
             )
             if event.sender_id in generation_state:
                 await state['data']['client'].disconnect()
@@ -282,7 +290,7 @@ class SessionGenerator:
 
         try:
             status_msg = await event.reply(
-                VBotBranding.wrap_message("🔐 **Verifikasi 2FA...**", include_footer=False)
+                self._wrap("🔐 **Verifikasi 2FA...**", include_footer=False)
             )
 
             # Sign in with password
@@ -309,7 +317,7 @@ class SessionGenerator:
             )
 
             await event.reply(
-                VBotBranding.wrap_message(content, include_footer=False)
+                self._wrap(content, include_footer=False)
             )
 
             # Send session string
@@ -323,7 +331,7 @@ class SessionGenerator:
             )
 
             await event.reply(
-                VBotBranding.wrap_message(content, include_footer=False)
+                self._wrap(content, include_footer=False)
             )
 
             # Cleanup
@@ -333,7 +341,7 @@ class SessionGenerator:
         except Exception as e:
             logger.error(f"Error with 2FA: {e}")
             await event.reply(
-                VBotBranding.wrap_message(
+                self._wrap(
                     f"❌ **Password 2FA salah atau error:** {str(e)}"
                 )
             )

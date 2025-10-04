@@ -22,9 +22,8 @@ Commands untuk group management.
 **Commands:**
 - `/t [batch] <message>` atau `/t` (reply) - Tag semua anggota via edit batch (alias: `.t`, `+t`)
 - `/c` - Hentikan proses tag massal (alias: `.c`, `+c`)
-- `/tagall` (reply) atau `/tagall <message>` - Tag all members
 - `.t [batch] <message>` atau `.t` (reply) - Tag all via editable batches (admin only)
-- `/cancel` - Stop ongoing tagall
+- `/cancel` - Stop ongoing tag mass process
 - `/pm @username` atau `/pm` (reply) - Promote to admin (requires admin rights)
 - `/dm @username` atau `/dm` (reply) - Demote from admin
 - `/lock @username` atau `/lock` (reply) - Auto-delete user messages

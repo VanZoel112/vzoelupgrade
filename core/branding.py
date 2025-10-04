@@ -8,30 +8,95 @@ Version: 1.0.0
 """
 
 import asyncio
+from typing import Dict, Optional
+
 
 class VBotBranding:
     """VBot branding and animation utilities"""
 
-    HEADER = "╭━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n│ **VBot Music By Vzoel Fox's** │\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯"
-    FOOTER = "╭━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n│ **2025© Vzoel Fox's Lutpan** │\n│      **@VZLfxs**      │\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯"
+    HEADER = "**VBot Music – {plugins} by VBot**"
+    FOOTER = "**{plugins} by VBot**"
+    DEFAULT_PLUGIN_NAME = "VBot"
 
     # Loading animation frames
     LOADING_FRAMES = [
         "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
     ]
 
+    class _SafeFormatDict(dict):
+        """Dictionary that leaves unknown placeholders untouched."""
+
+        def __missing__(self, key: str) -> str:
+            return f"{{{key}}}"
+
     @staticmethod
-    def wrap_message(content: str, include_header: bool = True, include_footer: bool = True) -> str:
-        """Wrap message with VBot branding"""
+    def _build_placeholder_values(
+        plugin_name: Optional[str] = None,
+        extra: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, str]:
+        values: Dict[str, str] = {
+            "plugins": plugin_name or VBotBranding.DEFAULT_PLUGIN_NAME,
+        }
+        if extra:
+            values.update(extra)
+        return values
+
+    @staticmethod
+    def apply_placeholders(
+        text: str,
+        *,
+        plugin_name: Optional[str] = None,
+        extra: Optional[Dict[str, str]] = None,
+    ) -> str:
+        """Replace branding placeholders within ``text`` safely."""
+
+        if not text:
+            return text
+
+        values = VBotBranding._build_placeholder_values(
+            plugin_name=plugin_name,
+            extra=extra,
+        )
+        return text.format_map(VBotBranding._SafeFormatDict(values))
+
+    @staticmethod
+    def wrap_message(
+        content: str,
+        include_header: bool = True,
+        include_footer: bool = True,
+        *,
+        plugin_name: Optional[str] = None,
+        placeholders: Optional[Dict[str, str]] = None,
+    ) -> str:
+        """Wrap message with VBot branding, replacing placeholders when provided."""
+
         parts = []
 
         if include_header:
-            parts.append(VBotBranding.HEADER)
+            parts.append(
+                VBotBranding.apply_placeholders(
+                    VBotBranding.HEADER,
+                    plugin_name=plugin_name,
+                    extra=placeholders,
+                )
+            )
 
-        parts.append(content)
+        parts.append(
+            VBotBranding.apply_placeholders(
+                content,
+                plugin_name=plugin_name,
+                extra=placeholders,
+            )
+        )
 
         if include_footer:
-            parts.append(VBotBranding.FOOTER)
+            parts.append(
+                VBotBranding.apply_placeholders(
+                    VBotBranding.FOOTER,
+                    plugin_name=plugin_name,
+                    extra=placeholders,
+                )
+            )
 
         return "\n\n".join(parts)
 

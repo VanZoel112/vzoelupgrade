@@ -43,6 +43,7 @@ class StringSessionHandler:
     def __init__(self, bot):
         self.bot = bot
         self.client = getattr(bot, "client", None)
+        self.plugin_name = "String Session"
 
         # Try to import branding
         try:
@@ -64,6 +65,7 @@ class StringSessionHandler:
                 content,
                 include_header=include_header,
                 include_footer=include_footer,
+                plugin_name=self.plugin_name,
             )
         return content
 
