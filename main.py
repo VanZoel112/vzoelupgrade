@@ -2959,7 +2959,7 @@ Contact @VZLfxs for support & inquiries
                 custom_message = "Sedang menandai seluruh anggota..."
 
             custom_message = (
-                f"{custom_message}\n\n_Disajikan oleh Vzoel Fox's (Lutpan)_"
+                f"{custom_message}\n\n_{{plugins}} by VBot_"
             )
 
             reply_to_msg_id = getattr(message, "reply_to_msg_id", None)
