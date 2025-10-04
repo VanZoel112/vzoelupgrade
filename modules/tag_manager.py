@@ -116,7 +116,7 @@ class TagManager:
 
             # Send initial message
             initial_text = (
-                f"{base_message}\n\nSedang memulai proses tag oleh Vzoel Fox's (Lutpan)..."
+                f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot..."
             )
             initial_text = f"{base_message}\n\n⏳ Starting tag process..."
             message_obj = await client.send_message(
@@ -154,7 +154,7 @@ class TagManager:
                 progress = f"({session['tagged_count'] + len(batch_members)}/{len(members)})"
                 updated_text = (
                     f"{base_message}\n\n{' '.join(mentions)}\n\n"
-                    f"Progres oleh Vzoel Fox's (Lutpan): {progress}"
+                    f"Progres oleh {{plugins}} by VBot: {progress}"
                 )
 
                 try:
@@ -171,7 +171,7 @@ class TagManager:
 
             # Final message
             final_text = (
-                f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh Vzoel Fox's (Lutpan)."
+                f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot."
             )
             try:
                 await message_obj.edit(final_text)
@@ -192,7 +192,7 @@ class TagManager:
             if session and session.get('message_obj'):
                 try:
                     cancel_text = (
-                        f"{session['message']}\n\nProses tag dibatalkan oleh admin Vzoel Fox's (Lutpan)."
+                        f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot."
                     )
                     await session['message_obj'].edit(cancel_text)
                 except:
