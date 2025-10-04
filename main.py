@@ -1620,6 +1620,7 @@ Contact @VZLfxs for support & inquiries
             except Exception as exc:
                 logger.error(f"Failed to send configured music logo: {exc}")
 
+        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "").strip()
         logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "")
         logo_path = Path(logo_path_value).expanduser() if logo_path_value else None
 
@@ -1640,6 +1641,34 @@ Contact @VZLfxs for support & inquiries
             if logo_path_value.startswith(("http://", "https://")):
                 if await _send_fallback(logo_path_value):
                     return True
+            else:
+                path_candidates = []
+                if logo_path:
+                    path_candidates.append(logo_path)
+
+                if logo_path and not logo_path.is_absolute():
+                    project_root = Path(__file__).resolve().parent
+                    path_candidates.append(project_root / logo_path_value)
+
+                resolved_candidates = []
+                for candidate in path_candidates:
+                    try:
+                        resolved_candidate = candidate.expanduser().resolve(strict=False)
+                    except OSError:
+                        continue
+
+                    resolved_candidates.append(resolved_candidate)
+                    if resolved_candidate.is_file():
+                        if await _send_fallback(str(resolved_candidate)):
+                            return True
+
+                if not resolved_candidates or not any(
+                    candidate.is_file() for candidate in resolved_candidates
+                ):
+                    logger.error(
+                        "Configured music logo fallback path '%s' does not exist",
+                        logo_path_value,
+                    )
             elif logo_path and logo_path.is_file():
                 if await _send_fallback(str(logo_path)):
                     return True
