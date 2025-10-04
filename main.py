@@ -517,34 +517,34 @@ class VBot:
                     )
                     await event.edit(VBotBranding.get_branding_missing_notice())
 
-            # Session generator callback
-            elif data == "start_gensession":
-                # Check if in private chat
-                if not event.is_private:
-                    await event.answer("Session generator hanya bisa di private chat!", alert=True)
-                    return
-
-                # Redirect to /gensession command
-                me = await self.client.get_me()
-                await event.answer("Starting session generator...")
-                redirect_text = (
-                    "**Session String Generator**\n\n"
-                    "Untuk memulai, silakan ketik:\n"
-                    "`/gensession`\n\n"
-                    "atau klik tombol di bawah untuk memulai."
-                )
-                buttons = [[Button.inline("Start Generator", b"run_gensession")]]
-                await event.edit(redirect_text, buttons=buttons)
-
-            # Run session generator
-            elif data == "run_gensession":
-                if hasattr(self, 'session_generator'):
-                    # Create a mock event for the generator
-                    await event.answer("Memulai generator...")
-                    # Trigger the generator
-                    await event.respond("/gensession")
-                else:
-                    await event.answer("Session generator plugin tidak aktif!", alert=True)
+            # Session generator callbacks (disabled - use /gensession command directly)
+            # elif data == "start_gensession":
+            #     # Check if in private chat
+            #     if not event.is_private:
+            #         await event.answer("Session generator hanya bisa di private chat!", alert=True)
+            #         return
+            #
+            #     # Redirect to /gensession command
+            #     me = await self.client.get_me()
+            #     await event.answer("Starting session generator...")
+            #     redirect_text = (
+            #         "**Session String Generator**\n\n"
+            #         "Untuk memulai, silakan ketik:\n"
+            #         "`/gensession`\n\n"
+            #         "atau klik tombol di bawah untuk memulai."
+            #     )
+            #     buttons = [[Button.inline("Start Generator", b"run_gensession")]]
+            #     await event.edit(redirect_text, buttons=buttons)
+            #
+            # # Run session generator
+            # elif data == "run_gensession":
+            #     if hasattr(self, 'session_generator'):
+            #         # Create a mock event for the generator
+            #         await event.answer("Memulai generator...")
+            #         # Trigger the generator
+            #         await event.respond("/gensession")
+            #     else:
+            #         await event.answer("Session generator plugin tidak aktif!", alert=True)
 
             # Music playback callbacks
             elif data.startswith("music:"):
@@ -958,11 +958,8 @@ By Vzoel Fox's
 
             # Different buttons for private vs group
             if message.is_private:
-                # Private chat buttons: Generate String, Add to Group, Help
+                # Private chat buttons: Add to Group, Help
                 buttons = [
-                    [
-                        Button.inline("Generate String", b"start_gensession"),
-                    ],
                     [
                         Button.url("Add to Group", f"https://t.me/{bot_username}?startgroup=true"),
                         Button.inline("Help", f"help:page:0".encode())
@@ -1038,7 +1035,6 @@ By Vzoel Fox's
                     ("`/help`", "Buka panduan interaktif ini"),
                     ("`/about`", "Informasi detail mengenai bot"),
                     ("`/ping`", "Cek latensi & uptime"),
-                    ("`/gensession`", "Mulai generator string session"),
                 ],
             },
         ]
