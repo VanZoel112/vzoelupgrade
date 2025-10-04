@@ -115,6 +115,9 @@ class TagManager:
             batch_size = session.get('batch_size', 5)
 
             # Send initial message
+            initial_text = (
+                f"{base_message}\n\nSedang memulai proses tag oleh Vzoel Fox's (Lutpan)..."
+            )
             initial_text = f"{base_message}\n\n⏳ Starting tag process..."
             message_obj = await client.send_message(
                 chat_id,
@@ -149,7 +152,10 @@ class TagManager:
 
                 # Update message with current batch
                 progress = f"({session['tagged_count'] + len(batch_members)}/{len(members)})"
-                updated_text = f"{base_message}\n\n{' '.join(mentions)}\n\n📊 Progress: {progress}"
+                updated_text = (
+                    f"{base_message}\n\n{' '.join(mentions)}\n\n"
+                    f"Progres oleh Vzoel Fox's (Lutpan): {progress}"
+                )
 
                 try:
                     await message_obj.edit(updated_text)
@@ -164,7 +170,9 @@ class TagManager:
                 await asyncio.sleep(config.TAG_DELAY)
 
             # Final message
-            final_text = f"{base_message}\n\n✅ Tagged all {len(members)} members!"
+            final_text = (
+                f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh Vzoel Fox's (Lutpan)."
+            )
             try:
                 await message_obj.edit(final_text)
             except:
@@ -183,7 +191,9 @@ class TagManager:
             session = self.active_tags.get(chat_id)
             if session and session.get('message_obj'):
                 try:
-                    cancel_text = f"{session['message']}\n\n❌ Tag process cancelled by admin."
+                    cancel_text = (
+                        f"{session['message']}\n\nProses tag dibatalkan oleh admin Vzoel Fox's (Lutpan)."
+                    )
                     await session['message_obj'].edit(cancel_text)
                 except:
                     pass

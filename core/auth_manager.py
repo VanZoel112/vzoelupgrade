@@ -33,6 +33,12 @@ class AuthManager:
         self.developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
         self.admin_chat_ids = set(getattr(config, "ADMIN_CHAT_IDS", []) or [])
         self.enable_public: bool = getattr(config, "ENABLE_PUBLIC_COMMANDS", True)
+        self._tag_command_prefixes = (".", "/", "+")
+        self._admin_tag_commands = {f"{prefix}t" for prefix in self._tag_command_prefixes}
+        self._admin_tag_cancel_commands = {f"{prefix}c" for prefix in self._tag_command_prefixes}
+        self._admin_override_commands = (
+            self._admin_tag_commands | self._admin_tag_cancel_commands
+        )
         dev_prefix = getattr(config, "PREFIX_DEV", ".") or "."
         self.admin_dot_commands = {f"{dev_prefix}t".lower()}
         self._last_denied_reason: Optional[str] = None
@@ -143,6 +149,7 @@ class AuthManager:
         command = self._normalize_command(message_text)
         if not command:
             return None
+        if command in self._admin_override_commands:
         if command in self.admin_dot_commands:
             return "admin"
         if command.startswith('+'):
@@ -177,6 +184,7 @@ class AuthManager:
         if command_type == "owner":
             return await self.can_use_owner_command(user_id)
         elif command_type == "admin":
+            if cmd in self._admin_override_commands:
             if cmd in self.admin_dot_commands:
                 return await self.can_use_admin_command(
                     client,

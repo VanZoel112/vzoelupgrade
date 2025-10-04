@@ -20,6 +20,8 @@ Commands untuk management bot dan user permissions.
 Commands untuk group management.
 
 **Commands:**
+- `/t [batch] <message>` atau `/t` (reply) - Tag semua anggota via edit batch (alias: `.t`, `+t`)
+- `/c` - Hentikan proses tag massal (alias: `.c`, `+c`)
 - `/tagall` (reply) atau `/tagall <message>` - Tag all members
 - `.t [batch] <message>` atau `.t` (reply) - Tag all via editable batches (admin only)
 - `/cancel` - Stop ongoing tagall
@@ -40,13 +42,13 @@ Commands untuk group management.
 ### 3. `.` Prefix - ALL USERS
 Public commands yang bisa digunakan semua orang (kecuali `.t` yang khusus admin).
 
-**Commands:**
 - `.play <song>` - Play music
 - `.pause` - Pause music
 - `.resume` - Resume music
 - `.stop` - Stop music
 - `.queue` - Show queue
 - `.gensession` - Generate session string (PM only)
+- `.t [batch] <message>` atau `.t` (reply) - Alias admin untuk `/t`
 
 **Permission:** Semua user
 
@@ -97,7 +99,7 @@ Public commands yang bisa digunakan semua orang (kecuali `.t` yang khusus admin)
 - [x] Implement `+add` and `+del` commands
 - [x] Implement `/pm` and `/dm` commands
 - [x] Implement `+setwelcome` command
-- [x] Implement `/cancel` command
+- [x] Implement `/c` command (alias `.c` / `+c`)
 - [x] Implement `/locklist` command
 - [x] Update `/lock` to use database (migrated to Database)
 - [x] Update welcome system to use database (migrated to Database)

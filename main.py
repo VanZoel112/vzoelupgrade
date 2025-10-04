@@ -99,6 +99,9 @@ class VBot:
         self._premium_wrapper_ids: Set[int] = set()
         self._premium_wrapper_id_queue: Deque[int] = deque()
         self._premium_wrapper_id_limit = 4096
+        self._tag_prefixes = (".", "/", "+")
+        self._tag_start_commands = {f"{prefix}t" for prefix in self._tag_prefixes}
+        self._tag_stop_commands = {f"{prefix}c" for prefix in self._tag_prefixes}
         prefix_dev = getattr(config, "PREFIX_DEV", ".") or "."
         self._dot_tag_command = (prefix_dev + "t").lower()
 
@@ -205,8 +208,8 @@ class VBot:
                 # Admin commands
                 BotCommand(command="pm", description="Promote user to admin"),
                 BotCommand(command="dm", description="Demote user from admin"),
-                BotCommand(command="tagall", description="Tag all members"),
-                BotCommand(command="cancel", description="Cancel tag operation"),
+                BotCommand(command="t", description="Tag semua anggota secara bertahap"),
+                BotCommand(command="c", description="Hentikan proses tag massal"),
                 BotCommand(command="lock", description="Lock user (auto-delete)"),
                 BotCommand(command="unlock", description="Unlock user"),
                 BotCommand(command="locklist", description="Show locked users"),
@@ -708,6 +711,13 @@ class VBot:
                 await self._handle_locklist_command(message)
 
             # Tag system
+            elif command in self._tag_start_commands:
+                await self._handle_tag_command(message)
+            elif command in self._tag_stop_commands:
+                await self._handle_tag_cancel_command(message)
+            elif command == '/cancel' and not (message.is_group or message.is_channel):
+                # Biarkan generator session dan alur lainnya menangani /cancel di private chat
+                return
             elif command == '/tagall':
                 await self._handle_tagall_command(message, parts)
             elif command == self._dot_tag_command:
@@ -895,6 +905,9 @@ By Vzoel Fox's
     def _build_help_pages(self) -> List[Dict[str, object]]:
         """Define help sections for slash commands."""
 
+        tag_start_display = " / ".join(f"`{prefix}t`" for prefix in self._tag_prefixes)
+        tag_stop_display = " / ".join(f"`{prefix}c`" for prefix in self._tag_prefixes)
+
         return [
             {
                 "label": "Music",
@@ -923,6 +936,8 @@ By Vzoel Fox's
                     ("`/lock @user`", "Kunci pengguna agar pesannya dihapus otomatis"),
                     ("`/unlock @user`", "Buka kunci pengguna"),
                     ("`/locklist`", "Daftar pengguna yang terkunci"),
+                    (f"{tag_start_display} [batch] <text>", "Mention semua anggota via edit batch"),
+                    (f"{tag_stop_display}", "Batalkan penandaan massal"),
                     ("`/tagall <text>`", "Mention semua anggota"),
                     (f"`{self._dot_tag_command} [batch] <text>`", "Mention semua anggota via edit batch"),
                     ("`/cancel`", "Batalkan penandaan massal"),
@@ -963,7 +978,7 @@ By Vzoel Fox's
 
         toggle_row: List[Button] = []
         for idx, section in enumerate(self._help_pages):
-            label_prefix = "✅ " if idx == current_index else ""
+            label_prefix = "Aktif | " if idx == current_index else ""
             toggle_row.append(
                 Button.inline(
                     f"{label_prefix}{section['label']}",
@@ -972,9 +987,9 @@ By Vzoel Fox's
             )
 
         navigation_row = [
-            Button.inline("⬅️ Back", f"help:page:{(current_index - 1) % total_pages}".encode()),
+            Button.inline("Sebelumnya", f"help:page:{(current_index - 1) % total_pages}".encode()),
             Button.url("FOUNDER", "https://t.me/VZLfxs"),
-            Button.inline("Next ➡️", f"help:page:{(current_index + 1) % total_pages}".encode()),
+            Button.inline("Berikutnya", f"help:page:{(current_index + 1) % total_pages}".encode()),
         ]
 
         return text, [toggle_row, navigation_row]
@@ -2332,46 +2347,103 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Error in locklist command: {e}", exc_info=True)
             await message.reply(f"**Error:** {str(e)}")
 
-    async def _handle_tagall_command(self, message, parts):
-        """Handle /tagall command - tag all members"""
+    async def _handle_tag_command(self, message):
+        """Handle perintah tag massal dengan dukungan batch dinamis."""
+        if not config.ENABLE_TAG_SYSTEM:
+            await message.reply(
+                VBotBranding.format_error("Sistem tag sedang dinonaktifkan oleh Vzoel Fox's (Lutpan).")
+            )
+            return
+
         if not message.is_group and not message.is_channel:
-            await message.reply("**Tag all only works in groups!**")
+            await message.reply(
+                VBotBranding.format_error("Perintah tag massal hanya tersedia di grup atau kanal.")
+            )
             return
 
         try:
-            # Get custom message if provided
-            custom_message = "Tagging all members..."
-            if len(parts) > 1:
-                custom_message = ' '.join(parts[1:])
+            reply_message = None
+            if getattr(message, "is_reply", False):
+                try:
+                    reply_message = await message.get_reply_message()
+                except Exception as fetch_error:
+                    logger.debug("Failed to fetch replied message: %s", fetch_error)
 
-            # Start tag all process
+            raw_text = message.raw_text or message.text or ""
+            remainder = ""
+            if raw_text:
+                parts = raw_text.split(maxsplit=1)
+                if len(parts) > 1:
+                    remainder = parts[1].strip()
+
+            provided_batch: Optional[int] = None
+            custom_message = remainder
+
+            if remainder:
+                first_split = remainder.split(maxsplit=1)
+                candidate = first_split[0]
+                rest_text = first_split[1] if len(first_split) > 1 else ""
+                if candidate.isdigit():
+                    provided_batch = int(candidate)
+                    custom_message = rest_text.strip()
+                else:
+                    custom_message = remainder
+
+            if not custom_message and reply_message:
+                reply_text = getattr(reply_message, "raw_text", None) or getattr(reply_message, "message", "")
+                custom_message = reply_text.strip()
+
+            if not custom_message:
+                custom_message = "Sedang menandai seluruh anggota..."
+
+            custom_message = (
+                f"{custom_message}\n\n_Disajikan oleh Vzoel Fox's (Lutpan)_"
+            )
+
+            reply_to_msg_id = getattr(message, "reply_to_msg_id", None)
+
             success = await self.tag_manager.start_tag_all(
                 self.client,
                 message.chat_id,
                 custom_message,
-                message.sender_id
+                message.sender_id,
+                batch_size=provided_batch,
+                reply_to_msg_id=reply_to_msg_id,
             )
 
             if success:
-                await message.reply(
-                    f"**Tag All Started**\n\n"
-                    f"**Message:** {custom_message}\n\n"
-                    f"Tagging all members... Use `/cancel` to stop."
+                confirm_text = (
+                    "**Tag Massal Dimulai**\n\n"
+                    f"**Pesan:** {custom_message}\n\n"
+                    "Bot akan menandai seluruh anggota secara bertahap. Gunakan `.c`/`/c`/`+c` untuk menghentikan."
                 )
-            else:
-                # Check if already tagging
+                await message.reply(
+                    VBotBranding.wrap_message(confirm_text, include_footer=False)
+                )
+                return
+
+            if not success:
                 if message.chat_id in self.tag_manager.active_tags:
                     await message.reply(
-                        "**Tag all already in progress!**\n\n"
-                        "Wait for current process to finish or use `/cancel` to stop it."
+                        VBotBranding.format_error(
+                            "Proses tag massal sedang berlangsung. Tunggu hingga selesai atau gunakan `.c`/`/c`/`+c`."
+                        )
                     )
                 else:
-                    await message.reply("**Error:** Could not start tag all. No members found or insufficient permissions.")
+                    await message.reply(
+                        VBotBranding.format_error(
+                            "Tag massal gagal dimulai. Periksa anggota dan izin bot."
+                        )
+                    )
 
         except Exception as e:
-            logger.error(f"Error in tagall command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            logger.error(f"Error in tag command: {e}", exc_info=True)
+            await message.reply(
+                VBotBranding.format_error(f"Galat sistem: {str(e)}")
+            )
 
+    async def _handle_tag_cancel_command(self, message):
+        """Handle perintah pembatalan tag massal."""
     async def _handle_dot_tag_command(self, message):
         """Handle developer-prefix tag command (e.g. .t) for admins."""
         if not config.ENABLE_TAG_SYSTEM:
@@ -2446,23 +2518,32 @@ Contact @VZLfxs for support & inquiries
     async def _handle_cancel_command(self, message):
         """Handle /cancel command - cancel ongoing tag all"""
         if not message.is_group and not message.is_channel:
-            await message.reply("**Cancel only works in groups!**")
+            await message.reply(
+                VBotBranding.format_error("Perintah pembatalan hanya tersedia di grup atau kanal.")
+            )
             return
 
         try:
             success = await self.tag_manager.cancel_tag_all(message.chat_id)
 
             if success:
+                cancel_text = (
+                    "**Tag Massal Dibatalkan**\n\n"
+                    "Proses penandaan telah dihentikan sesuai permintaan admin."
+                )
                 await message.reply(
-                    "**Tag All Cancelled**\n\n"
-                    "The tagging process has been stopped."
+                    VBotBranding.wrap_message(cancel_text, include_footer=False)
                 )
             else:
-                await message.reply("**No active tag all process in this chat.**")
+                await message.reply(
+                    VBotBranding.format_error("Tidak ada proses tag massal yang aktif di percakapan ini.")
+                )
 
         except Exception as e:
             logger.error(f"Error in cancel command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            await message.reply(
+                VBotBranding.format_error(f"Galat sistem: {str(e)}")
+            )
 
 
 async def main():

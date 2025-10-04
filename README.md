@@ -111,6 +111,8 @@ TAG_DELAY=2.0
 - `/play <song>` - Play music from YouTube
 - `/lock <user>` - Lock user (auto-delete messages)
 - `/unlock <user_id>` - Unlock user
+- `/t [batch] <message>` atau `/t` (reply) - Tag semua anggota secara bertahap (alias: `.t`, `+t`)
+- `/c` - Hentikan proses tag massal (alias: `.c`, `+c`)
 - `/tag <message>` - Tag all members progressively
 - `.t [batch] <message>` - Admin-only batch tag all (edits a single message)
 - `/ctag` - Cancel ongoing tag process
@@ -120,6 +122,7 @@ TAG_DELAY=2.0
 - `.setwelcome <message>` - Set welcome message
 - `.welcome on/off` - Toggle welcome system
 - `.privacy` - Toggle privacy mode
+- `.t [batch] <message>` atau `.t` (reply) - Alias admin untuk `/t`
 
 ### Public Commands (`#`)
 - `#help` - Show help message
