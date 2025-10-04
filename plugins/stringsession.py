@@ -37,6 +37,9 @@ generation_sessions = {}
 group_settings = {}
 
 
+HANDLED_COMMANDS = {"/gensession", "/sessiontoggle"}
+
+
 class StringSessionHandler:
     """Handle string session generation with inline interface"""
 
@@ -568,11 +571,23 @@ def setup(bot):
 
     handler = StringSessionHandler(bot)
 
-    # Main command handler
-    @bot_client.on(events.NewMessage(pattern=r'^/gensession$'))
-    async def handle_gensession(event):
-        """Handle /gensession command"""
-        await handler.handle_gensession_command(event)
+    gensession_enabled = True
+    if bot.plugin_loader.handles_command("/gensession"):
+        gensession_enabled = False
+        HANDLED_COMMANDS.discard("/gensession")
+        logger.info("Skipping /gensession in StringSession plugin; already handled")
+
+    sessiontoggle_enabled = True
+    if bot.plugin_loader.handles_command("/sessiontoggle"):
+        sessiontoggle_enabled = False
+        HANDLED_COMMANDS.discard("/sessiontoggle")
+        logger.info("Skipping /sessiontoggle in StringSession plugin; already handled")
+
+    if gensession_enabled:
+        @bot_client.on(events.NewMessage(pattern=r'^/gensession$'))
+        async def handle_gensession(event):
+            """Handle /gensession command"""
+            await handler.handle_gensession_command(event)
 
     # Text input handler for session generation
     @bot_client.on(events.NewMessage(func=lambda e: e.sender_id in generation_sessions and e.is_private))
@@ -586,11 +601,11 @@ def setup(bot):
         """Handle inline button callbacks"""
         await handler.handle_callback(event)
 
-    # Toggle command for groups
-    @bot_client.on(events.NewMessage(pattern=r'^/sessiontoggle$'))
-    async def handle_toggle(event):
-        """Handle /sessiontoggle command"""
-        await handler.handle_session_toggle(event)
+    if sessiontoggle_enabled:
+        @bot_client.on(events.NewMessage(pattern=r'^/sessiontoggle$'))
+        async def handle_toggle(event):
+            """Handle /sessiontoggle command"""
+            await handler.handle_session_toggle(event)
 
     # Export handler
     setattr(bot, "stringsession_handler", handler)

@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import importlib
-import inspect
 import logging
 import pkgutil
 from types import ModuleType
-from typing import Dict, List, Optional, Sequence, Set
+import inspect
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,8 @@ class PluginLoader:
         }
         self.loaded_plugins: Dict[str, ModuleType] = {}
         self.failed_plugins: Dict[str, Exception] = {}
+        self.handled_commands: Set[str] = set()
+        self.command_handlers: Dict[str, Callable[[object, str, List[str]], object]] = {}
 
     @staticmethod
     def _normalize_name(name: str) -> str:
@@ -92,6 +94,7 @@ class PluginLoader:
                         await result
                 else:
                     logger.debug("Plugin %s does not define a callable setup", module_name)
+                self._register_module_commands(module)
                 self.loaded_plugins[module_name] = module
                 loaded.append(module_name)
                 logger.info("Plugin loaded: %s", module_name)
@@ -99,6 +102,97 @@ class PluginLoader:
                 logger.error("Failed to load plugin %s: %s", module_name, exc, exc_info=True)
                 self.failed_plugins[module_name] = exc
         return loaded
+
+
+    def _normalize_command(self, command: str) -> str:
+        return command.strip().lower()
+
+    def _register_module_commands(self, module: ModuleType) -> None:
+        """Register the commands declared by a plugin module."""
+
+        commands: Optional[Iterable[str]]
+        commands = getattr(module, "HANDLED_COMMANDS", None)
+        if commands is None:
+            return
+
+        if isinstance(commands, str):
+            commands = [commands]
+
+        try:
+            for command in commands:
+                if not isinstance(command, str):
+                    logger.debug(
+                        "Plugin %s provided a non-string command entry: %r",
+                        module.__name__,
+                        command,
+                    )
+                    continue
+                normalized = self._normalize_command(command)
+                if not normalized:
+                    continue
+                if normalized in self.handled_commands:
+                    logger.warning(
+                        "Command %s is already handled by another plugin; keeping first registration",
+                        command,
+                    )
+                    continue
+                self.handled_commands.add(normalized)
+        except TypeError:
+            logger.debug(
+                "Plugin %s provided an invalid HANDLED_COMMANDS value", module.__name__
+            )
+
+    def handles_command(self, command: str) -> bool:
+        """Return True if any plugin declares handling the given command."""
+
+        if not command:
+            return False
+        return command.lower() in self.handled_commands
+
+    def register_command_handler(
+        self,
+        commands: Iterable[str] | str,
+        handler: Callable[[object, str, List[str]], object],
+    ) -> bool:
+        """Register an async or sync handler for one or more commands."""
+
+        if isinstance(commands, str):
+            commands = [commands]
+
+        registered = False
+        for command in commands:
+            normalized = self._normalize_command(command)
+            if not normalized:
+                continue
+            if normalized in self.command_handlers:
+                logger.warning(
+                    "Command %s already has a registered handler; keeping the first one",
+                    command,
+                )
+                continue
+
+            self.command_handlers[normalized] = handler  # type: ignore[assignment]
+            self.handled_commands.add(normalized)
+            registered = True
+
+        return registered
+
+    async def dispatch_command(
+        self, command: str, message: object, parts: List[str]
+    ) -> bool:
+        """Invoke the registered handler for ``command`` if any."""
+
+        if not command:
+            return False
+
+        handler = self.command_handlers.get(self._normalize_command(command))
+        if handler is None:
+            return False
+
+        result = handler(message, command, parts)
+        if inspect.isawaitable(result):
+            await result
+        return True
 
 
 __all__ = ["PluginLoader"]

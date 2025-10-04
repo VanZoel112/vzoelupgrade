@@ -573,6 +573,9 @@ class VBot:
             self._command_context[message_id] = CommandStatus(start_time=start_time)
         command_text = message.text.lower()
 
+        command_success = False
+        error_message: Optional[str] = None
+
         try:
             command_parts = command_text.split()
             command = command_parts[0]
@@ -581,6 +584,16 @@ class VBot:
             if '@' in command:
                 command = command.split('@')[0]
                 command_parts[0] = command
+
+            if self.plugin_loader:
+                if await self.plugin_loader.dispatch_command(
+                    command, message, command_parts
+                ):
+                    command_success = True
+                    return
+                if self.plugin_loader.handles_command(command):
+                    command_success = True
+                    return
 
             command_type = self.auth_manager.get_command_type(command_text)
 
@@ -599,16 +612,7 @@ class VBot:
 
             if not has_permission:
                 error_msg = self.auth_manager.get_permission_error_message(command_type)
-
-                # Log failed permission check
-                execution_time = (datetime.now() - start_time).total_seconds()
-                await vbot_logger.log_command(
-                    message.sender_id,
-                    command_text,
-                    success=False,
-                    execution_time=execution_time,
-                    error="Permission denied"
-                )
+                error_message = "Permission denied"
 
                 if config.ENABLE_PRIVACY_SYSTEM:
                     await self.privacy_manager.process_private_command(
@@ -648,32 +652,17 @@ class VBot:
 
             # Route commands
             await self._route_command(message, command, command_parts)
-
-            # Log successful command execution
-            execution_time = (datetime.now() - start_time).total_seconds()
-            await vbot_logger.log_command(
-                message.sender_id,
-                command_text,
-                success=True,
-                execution_time=execution_time
-            )
+            command_success = True
 
         except Exception as e:
             # Log error with full context
-            execution_time = (datetime.now() - start_time).total_seconds()
+            if error_message is None:
+                error_message = str(e)
             await vbot_logger.log_error(
                 e,
                 context=f"Command execution: {command_text}",
                 user_id=message.sender_id,
                 send_to_telegram=True
-            )
-
-            await vbot_logger.log_command(
-                message.sender_id,
-                command_text,
-                success=False,
-                execution_time=execution_time,
-                error=str(e)
             )
 
             command_status = self._command_context.get(message_id) if message_id is not None else None
@@ -687,6 +676,14 @@ class VBot:
                     logger.debug(f"Failed to update status message: {edit_error}")
 
         finally:
+            execution_time = (datetime.now() - start_time).total_seconds()
+            await vbot_logger.log_command(
+                message.sender_id,
+                command_text,
+                success=command_success,
+                execution_time=execution_time,
+                error=error_message,
+            )
             self._finalize_command_status(message_id)
 
     def _finalize_command_status(self, message_id: Optional[int]):
@@ -782,10 +779,12 @@ class VBot:
             # JSON/metadata helper
             elif command in ['/showjson', '.showjson', '+showjson']:
                 await self._handle_showjson_command(message)
+            elif command in ['/getfileid', '.getfileid', '+getfileid']:
+                await self._handle_getfileid_command(message)
 
             # Music branding configuration
             elif command in ['/setlogo', '+setlogo']:
-                await self._handle_setlogo_command(message)
+                await self._handle_setlogo_command(message, parts)
 
             # Admin commands
             elif command in ['.stats', '.status']:
@@ -1199,34 +1198,58 @@ Contact @VZLfxs for support & inquiries
                 include_footer=False,
             )
 
+    async def _collect_metadata_for_developer(
+        self,
+        message,
+        *,
+        require_premium: bool,
+        missing_reply_message: str,
+    ) -> Optional[Tuple[Dict[str, Any], Dict[str, List[str]], int, object]]:
+        """Validate permissions and collect metadata from a replied message."""
+
+        sender_id = getattr(message, "sender_id", 0)
+        if not self.auth_manager.is_developer(sender_id):
+            await message.reply(
+                VBotBranding.format_error("Perintah ini hanya untuk developer.")
+            )
+            return None
+
+        if require_premium and not await self.emoji_manager.is_user_premium(
+            self.client, sender_id
+        ):
+            await message.reply(
+                VBotBranding.format_error(
+                    "Fitur mapping premium membutuhkan akun Telegram Premium."
+                )
+            )
+            return None
+
+        reply = await message.get_reply_message()
+        if not reply:
+            await self._reply_with_branding(
+                message,
+                missing_reply_message,
+                include_footer=False,
+            )
+            return None
+
+        metadata = await self._extract_message_metadata(reply)
+        new_mappings = self.emoji_manager.record_mapping_from_metadata(metadata)
+        return metadata, new_mappings, sender_id, reply
+
     async def _handle_showjson_command(self, message):
         """Return structured metadata for the replied message."""
 
         try:
-            if not self.auth_manager.is_developer(getattr(message, "sender_id", 0)):
-                await message.reply(VBotBranding.format_error("Perintah ini hanya untuk developer."))
+            result = await self._collect_metadata_for_developer(
+                message,
+                require_premium=True,
+                missing_reply_message="Balas ke pesan atau media yang ingin dianalisis dengan perintah ini.",
+            )
+            if not result:
                 return
 
-            sender_id = getattr(message, "sender_id", 0)
-            if not await self.emoji_manager.is_user_premium(self.client, sender_id):
-                await message.reply(
-                    VBotBranding.format_error(
-                        "Fitur mapping premium membutuhkan akun Telegram Premium."
-                    )
-                )
-                return
-
-            reply = await message.get_reply_message()
-            if not reply:
-                await self._reply_with_branding(
-                    message,
-                    "Balas ke pesan atau media yang ingin dianalisis dengan perintah ini.",
-                    include_footer=False,
-                )
-                return
-
-            metadata = await self._extract_message_metadata(reply)
-            new_mappings = self.emoji_manager.record_mapping_from_metadata(metadata)
+            metadata, new_mappings, sender_id, _ = result
 
             response_lines = []
             if new_mappings:
@@ -1248,12 +1271,81 @@ Contact @VZLfxs for support & inquiries
 
             await message.reply(VBotBranding.format_success("\n".join(response_lines)))
 
+            await self._deliver_json_metadata(
+                message.chat_id,
+                message.id,
+                metadata,
+                requester_id=sender_id,
+            )
+
         except Exception as exc:
             logger.error(f"showjson command failed: {exc}", exc_info=True)
             await message.reply(VBotBranding.format_error(f"Gagal mengambil metadata: {exc}"))
 
-    async def _handle_setlogo_command(self, message):
-        """Persist the replied media as the default music artwork."""
+    async def _handle_getfileid_command(self, message):
+        """Show quick metadata summary and JSON dump for a replied message."""
+
+        try:
+            result = await self._collect_metadata_for_developer(
+                message,
+                require_premium=False,
+                missing_reply_message="Balas ke pesan yang ingin dianalisis untuk mendapatkan file_id.",
+            )
+            if not result:
+                return
+
+            metadata, new_mappings, sender_id, reply = result
+
+            text_value = metadata.get("text") or ""
+            media_type = metadata.get("media_type") or "text"
+            custom_emojis = metadata.get("custom_emojis") or []
+            entities = getattr(reply, "entities", None) or []
+
+            summary_lines = [
+                "🤩 **MESSAGE JSON ANALYSIS**",
+                "",
+                f"🎚 **Message ID:** `{metadata.get('message_id')}`",
+                f"👽 **Chat ID:** `{metadata.get('chat_id')}`",
+                f"⚙️ **Date:** `{metadata.get('date') or '-'}`",
+                "",
+                "👍 **Analytics:**",
+                f"  • Text: {'Yes' if text_value else 'No'} (`{len(text_value)}` chars)",
+                f"  • Media: {'Yes' if media_type != 'text' else 'No'} (`{media_type}`)",
+                f"  • Emojis: {len(custom_emojis)} total",
+                f"  • Entities: {len(entities)} total",
+            ]
+
+            if new_mappings:
+                summary_lines.append("")
+                summary_lines.append("✨ **Emoji Mapping Update:**")
+                for standard, values in new_mappings.items():
+                    if standard == "__pool__":
+                        for emoji in values:
+                            summary_lines.append(f"  • Ditambahkan ke pool: {emoji}")
+                    else:
+                        joined = " / ".join(values)
+                        summary_lines.append(f"  • {standard} → {joined}")
+
+            summary_lines.append("")
+            summary_lines.append("✉️ **VZL2 JSON Analyzer**")
+
+            await message.reply(
+                self._format_branded("\n".join(summary_lines), include_footer=False)
+            )
+
+            await self._deliver_json_metadata(
+                message.chat_id,
+                message.id,
+                metadata,
+                requester_id=sender_id,
+            )
+
+        except Exception as exc:
+            logger.error(f"getfileid command failed: {exc}", exc_info=True)
+            await message.reply(VBotBranding.format_error(f"Gagal mengambil file_id: {exc}"))
+
+    async def _handle_setlogo_command(self, message, parts):
+        """Persist the replied media or provided file_id as the default music artwork."""
 
         try:
             sender_id = getattr(message, "sender_id", 0)
@@ -1261,8 +1353,39 @@ Contact @VZLfxs for support & inquiries
                 await message.reply(VBotBranding.format_error("Perintah ini hanya dapat digunakan oleh developer."))
                 return
 
+            raw_text = getattr(message, "raw_text", None) or getattr(message, "text", "") or ""
+            argument = ""
+            if raw_text:
+                raw_segments = raw_text.split(maxsplit=1)
+                if len(raw_segments) > 1:
+                    argument = raw_segments[1].strip()
+
+            if argument:
+                lowered = argument.lower()
+                if lowered in {"reset", "clear"}:
+                    await self._persist_music_logo_settings(file_id="", file_path="")
+                    self._remove_local_music_logo_assets()
+                    await message.reply(
+                        VBotBranding.format_success(
+                            "Logo musik berhasil direset. Gunakan /setlogo lagi untuk mengatur ulang."
+                        )
+                    )
+                    return
+
+                await self._persist_music_logo_settings(file_id=argument)
+                await message.reply(
+                    VBotBranding.format_success(
+                        "Logo musik berhasil diperbarui dari File ID yang diberikan."
+                    )
+                )
+                return
+
             if not message.is_private:
-                await message.reply(VBotBranding.format_error("/setlogo hanya tersedia di private chat dengan bot."))
+                await message.reply(
+                    VBotBranding.format_error(
+                        "/setlogo hanya tersedia di private chat atau sertakan File ID."
+                    )
+                )
                 return
 
             reply = await message.get_reply_message()
@@ -1644,6 +1767,19 @@ Contact @VZLfxs for support & inquiries
             raise RuntimeError("File logo tidak ditemukan setelah diunduh.")
 
         return resolved_path
+
+    def _remove_local_music_logo_assets(self) -> None:
+        """Delete cached music logo files from the branding directory."""
+
+        target_dir = (self._project_root / "assets" / "branding").resolve()
+        if not target_dir.exists():
+            return
+
+        for existing in target_dir.glob("music_logo.*"):
+            try:
+                existing.unlink()
+            except OSError:
+                logger.debug("Failed to remove cached logo asset %s", existing)
 
     def _resolve_music_logo_local_candidates(self, path_value: Any) -> List[Path]:
         """Return unique candidate paths to try for a configured logo value."""
