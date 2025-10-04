@@ -51,6 +51,22 @@ class StringSessionHandler:
         except ImportError:
             self.branding = None
 
+    def format_message(
+        self,
+        content: str,
+        *,
+        include_footer: bool = True,
+        include_header: bool = True,
+    ) -> str:
+        """Helper to apply VBot branding when available."""
+        if self.branding:
+            return self.branding.wrap_message(
+                content,
+                include_header=include_header,
+                include_footer=include_footer,
+            )
+        return content
+
     async def check_group_allowed(self, event):
         """Check if session generation is allowed in this group"""
         chat_id = event.chat_id
@@ -69,20 +85,20 @@ class StringSessionHandler:
                     [Button.url("💬 Chat Pribadi Bot", f"t.me/{self.client.me.username}?start=gensession")]
                 ]
 
-                message = (
-                    "🔒 **Session Generator - Private Only**\n\n"
-                    "❌ Session generator **TIDAK BISA** digunakan di grup!\n\n"
-                    "**Alasan Keamanan:**\n"
-                    "• Session string = akses penuh ke akun\n"
-                    "• Data sensitif (API ID, Phone, OTP)\n"
-                    "• Risk kebocoran data\n\n"
-                    "**Cara pakai:**\n"
-                    "Klik tombol di bawah untuk chat pribadi dengan bot.\n\n"
-                    "**Admin:** Ketik `/sessiontoggle` untuk enable di grup ini (NOT RECOMMENDED!)"
+                message = self.format_message(
+                    (
+                        "🔒 **Session Generator - Private Only**\n\n"
+                        "❌ Session generator **TIDAK BISA** digunakan di grup!\n\n"
+                        "**Alasan Keamanan:**\n"
+                        "• Session string = akses penuh ke akun\n"
+                        "• Data sensitif (API ID, Phone, OTP)\n"
+                        "• Risk kebocoran data\n\n"
+                        "**Cara pakai:**\n"
+                        "Klik tombol di bawah untuk chat pribadi dengan bot.\n\n"
+                        "**Admin:** Ketik `/sessiontoggle` untuk enable di grup ini (NOT RECOMMENDED!)"
+                    ),
+                    include_footer=False,
                 )
-
-                if self.branding:
-                    message = self.branding.wrap_message(message, include_footer=False)
 
                 await event.reply(message, buttons=buttons)
                 return
@@ -91,8 +107,12 @@ class StringSessionHandler:
         user_id = event.sender_id
         if user_id in generation_sessions:
             await event.reply(
-                "⚠️ **Kamu sudah memulai proses generate session!**\n\n"
-                "Klik **Cancel** pada pesan sebelumnya atau tunggu 5 menit."
+                self.format_message(
+                    (
+                        "⚠️ **Kamu sudah memulai proses generate session!**\n\n"
+                        "Klik **Cancel** pada pesan sebelumnya atau tunggu 5 menit."
+                    )
+                )
             )
             return
 
@@ -111,28 +131,28 @@ class StringSessionHandler:
             'start_time': asyncio.get_event_loop().time()
         }
 
-        welcome_message = (
-            "🔐 **String Session Generator**\n\n"
-            "Generator ini akan membuat **Session String** untuk Assistant Account.\n\n"
-            "**⚠️ PENTING:**\n"
-            "• Gunakan nomor HP **BERBEDA** dari owner\n"
-            "• Account untuk join Voice Chat\n"
-            "• **JANGAN SHARE** session string!\n"
-            "• Session = Full access ke akun kamu\n\n"
-            "**Yang kamu butuhkan:**\n"
-            "📱 API ID & API Hash (dari my.telegram.org)\n"
-            "📞 Nomor HP (untuk assistant)\n"
-            "🔢 OTP Code (akan dikirim ke Telegram)\n\n"
-            "**Ready?** Klik tombol di bawah untuk mulai!"
+        welcome_message = self.format_message(
+            (
+                "🔐 **String Session Generator**\n\n"
+                "Generator ini akan membuat **Session String** untuk Assistant Account.\n\n"
+                "**⚠️ PENTING:**\n"
+                "• Gunakan nomor HP **BERBEDA** dari owner\n"
+                "• Account untuk join Voice Chat\n"
+                "• **JANGAN SHARE** session string!\n"
+                "• Session = Full access ke akun kamu\n\n"
+                "**Yang kamu butuhkan:**\n"
+                "📱 API ID & API Hash (dari my.telegram.org)\n"
+                "📞 Nomor HP (untuk assistant)\n"
+                "🔢 OTP Code (akan dikirim ke Telegram)\n\n"
+                "**Ready?** Klik tombol di bawah untuk mulai!"
+            ),
+            include_footer=False,
         )
 
         buttons = [
             [Button.inline("✅ Start Generation", b"session_start")],
             [Button.inline("❌ Cancel", b"session_cancel")]
         ]
-
-        if self.branding:
-            welcome_message = self.branding.wrap_message(welcome_message, include_footer=False)
 
         await event.reply(welcome_message, buttons=buttons)
 
@@ -159,15 +179,15 @@ class StringSessionHandler:
 
         generation_sessions[user_id]['step'] = 'api_id'
 
-        message = (
-            "**Step 1/4:** API ID\n\n"
-            "Masukkan **API ID** kamu dari https://my.telegram.org\n\n"
-            "Contoh: `12345678`\n\n"
-            "Ketik /cancel untuk batalkan."
+        message = self.format_message(
+            (
+                "**Step 1/4:** API ID\n\n"
+                "Masukkan **API ID** kamu dari https://my.telegram.org\n\n"
+                "Contoh: `12345678`\n\n"
+                "Ketik /cancel untuk batalkan."
+            ),
+            include_footer=False,
         )
-
-        if self.branding:
-            message = self.branding.wrap_message(message, include_footer=False)
 
         try:
             await event.edit(message)
@@ -222,7 +242,11 @@ class StringSessionHandler:
                 await self.process_2fa(event, session, text)
         except Exception as e:
             logger.error(f"Error processing step {step}: {e}", exc_info=True)
-            await event.reply(f"❌ **Error:** {str(e)}\n\nKetik /cancel untuk batalkan dan mulai ulang.")
+            await event.reply(
+                self.format_message(
+                    f"❌ **Error:** {str(e)}\n\nKetik /cancel untuk batalkan dan mulai ulang."
+                )
+            )
 
     async def process_api_id(self, event, session, text):
         """Process API ID input"""
@@ -231,46 +255,61 @@ class StringSessionHandler:
             session['data']['api_id'] = api_id
             session['step'] = 'api_hash'
 
-            message = (
-                "**Step 2/4:** API Hash\n\n"
-                "Masukkan **API Hash** kamu dari https://my.telegram.org\n\n"
-                "Contoh: `abcdef1234567890abcdef1234567890`\n\n"
-                "Ketik /cancel untuk batalkan."
+            message = self.format_message(
+                (
+                    "**Step 2/4:** API Hash\n\n"
+                    "Masukkan **API Hash** kamu dari https://my.telegram.org\n\n"
+                    "Contoh: `abcdef1234567890abcdef1234567890`\n\n"
+                    "Ketik /cancel untuk batalkan."
+                ),
+                include_footer=False,
             )
-
-            if self.branding:
-                message = self.branding.wrap_message(message, include_footer=False)
 
             await event.reply(message)
         except ValueError:
-            await event.reply("❌ **Invalid API ID!** Harus berupa angka.\n\nCoba lagi:")
+            await event.reply(
+                self.format_message(
+                    "❌ **Invalid API ID!** Harus berupa angka.\n\nCoba lagi:",
+                    include_footer=False,
+                )
+            )
 
     async def process_api_hash(self, event, session, text):
         """Process API Hash input"""
         if len(text) != 32:
-            await event.reply("❌ **Invalid API Hash!** Harus 32 karakter.\n\nCoba lagi:")
+            await event.reply(
+                self.format_message(
+                    "❌ **Invalid API Hash!** Harus 32 karakter.\n\nCoba lagi:",
+                    include_footer=False,
+                )
+            )
             return
 
         session['data']['api_hash'] = text
         session['step'] = 'phone'
 
-        message = (
-            "**Step 3/4:** Phone Number\n\n"
-            "Masukkan **nomor HP** untuk assistant account.\n\n"
-            "**Format:** `+6281234567890` (dengan kode negara)\n\n"
-            "⚠️ Gunakan nomor **BERBEDA** dari owner!\n\n"
-            "Ketik /cancel untuk batalkan."
+        message = self.format_message(
+            (
+                "**Step 3/4:** Phone Number\n\n"
+                "Masukkan **nomor HP** untuk assistant account.\n\n"
+                "**Format:** `+6281234567890` (dengan kode negara)\n\n"
+                "⚠️ Gunakan nomor **BERBEDA** dari owner!\n\n"
+                "Ketik /cancel untuk batalkan."
+            ),
+            include_footer=False,
         )
-
-        if self.branding:
-            message = self.branding.wrap_message(message, include_footer=False)
 
         await event.reply(message)
 
     async def process_phone(self, event, session, text):
         """Process phone number and send OTP"""
         if not text.startswith('+'):
-            await event.reply("❌ **Format salah!** Harus dimulai dengan + dan kode negara.\n\nContoh: `+6281234567890`")
+            await event.reply(
+                self.format_message(
+                    "❌ **Format salah!** Harus dimulai dengan + dan kode negara.\n\nContoh: `+6281234567890`",
+                    include_footer=False,
+                )
+            )
             return
 
         phone = text
@@ -278,7 +317,12 @@ class StringSessionHandler:
 
         # Create Telethon client
         try:
-            loading_msg = await event.reply("⏳ **Menghubungi Telegram...**")
+            loading_msg = await event.reply(
+                self.format_message(
+                    "⏳ **Menghubungi Telegram...**",
+                    include_footer=False,
+                )
+            )
 
             client = TelegramClient(
                 StringSession(),
@@ -296,42 +340,61 @@ class StringSessionHandler:
 
             await loading_msg.delete()
 
-            message = (
-                "**Step 4/4:** OTP Code\n\n"
-                "📨 **Kode OTP** sudah dikirim ke Telegram kamu!\n\n"
-                "Masukkan kode OTP (5 digit):\n\n"
-                "Contoh: `12345`\n\n"
-                "Ketik /cancel untuk batalkan."
+            message = self.format_message(
+                (
+                    "**Step 4/4:** OTP Code\n\n"
+                    "📨 **Kode OTP** sudah dikirim ke Telegram kamu!\n\n"
+                    "Masukkan kode OTP (5 digit):\n\n"
+                    "Contoh: `12345`\n\n"
+                    "Ketik /cancel untuk batalkan."
+                ),
+                include_footer=False,
             )
-
-            if self.branding:
-                message = self.branding.wrap_message(message, include_footer=False)
 
             await event.reply(message)
 
         except PhoneNumberInvalidError:
-            await event.reply("❌ **Nomor HP invalid!**\n\nCoba lagi dengan format yang benar.")
+            await event.reply(
+                self.format_message(
+                    "❌ **Nomor HP invalid!**\n\nCoba lagi dengan format yang benar.",
+                )
+            )
             session['step'] = 'phone'
         except FloodWaitError as e:
-            await event.reply(f"❌ **Flood Wait!** Tunggu {e.seconds} detik.\n\nTry again later.")
+            await event.reply(
+                self.format_message(
+                    f"❌ **Flood Wait!** Tunggu {e.seconds} detik.\n\nTry again later."
+                )
+            )
             if session.get('client'):
                 await session['client'].disconnect()
             del generation_sessions[event.sender_id]
         except Exception as e:
             logger.error(f"Error sending OTP: {e}")
-            await event.reply(f"❌ **Error:** {str(e)}\n\nCoba lagi atau ketik /cancel")
+            await event.reply(
+                self.format_message(
+                    f"❌ **Error:** {str(e)}\n\nCoba lagi atau ketik /cancel"
+                )
+            )
             session['step'] = 'phone'
 
     async def process_otp(self, event, session, text):
         """Process OTP code"""
         client = session.get('client')
         if not client:
-            await event.reply("❌ **Session expired!** Start again with /gensession")
+            await event.reply(
+                self.format_message("❌ **Session expired!** Start again with /gensession")
+            )
             del generation_sessions[event.sender_id]
             return
 
         try:
-            loading_msg = await event.reply("⏳ **Verifying OTP...**")
+            loading_msg = await event.reply(
+                self.format_message(
+                    "⏳ **Verifying OTP...**",
+                    include_footer=False,
+                )
+            )
 
             await client.sign_in(
                 session['data']['phone'],
@@ -343,21 +406,21 @@ class StringSessionHandler:
             session_string = client.session.save()
             await loading_msg.delete()
 
-            success_message = (
-                "✅ **Session String Generated!**\n\n"
-                "🔐 **SIMPAN SESSION INI:**\n\n"
-                f"`{session_string}`\n\n"
-                "**Cara pakai:**\n"
-                "1. Copy session string di atas\n"
-                "2. Paste ke `.env` file:\n"
-                "   `STRING_SESSION=session_string_kamu`\n"
-                "3. Restart bot\n\n"
-                "⚠️ **JANGAN SHARE KE SIAPAPUN!**\n"
-                "Session = full access ke akun kamu!"
+            success_message = self.format_message(
+                (
+                    "✅ **Session String Generated!**\n\n"
+                    "🔐 **SIMPAN SESSION INI:**\n\n"
+                    f"`{session_string}`\n\n"
+                    "**Cara pakai:**\n"
+                    "1. Copy session string di atas\n"
+                    "2. Paste ke `.env` file:\n"
+                    "   `STRING_SESSION=session_string_kamu`\n"
+                    "3. Restart bot\n\n"
+                    "⚠️ **JANGAN SHARE KE SIAPAPUN!**\n"
+                    "Session = full access ke akun kamu!"
+                ),
+                include_footer=False,
             )
-
-            if self.branding:
-                success_message = self.branding.wrap_message(success_message, include_footer=False)
 
             await event.reply(success_message)
 
@@ -366,34 +429,47 @@ class StringSessionHandler:
             del generation_sessions[event.sender_id]
 
         except PhoneCodeInvalidError:
-            await event.reply("❌ **OTP Code salah!**\n\nCoba lagi:")
+            await event.reply(
+                self.format_message("❌ **OTP Code salah!**\n\nCoba lagi:")
+            )
         except SessionPasswordNeededError:
             session['step'] = '2fa'
-            message = (
-                "🔒 **2FA Detected**\n\n"
-                "Account kamu menggunakan 2FA (Two-Factor Authentication).\n\n"
-                "Masukkan **password 2FA** kamu:\n\n"
-                "Ketik /cancel untuk batalkan."
+            message = self.format_message(
+                (
+                    "🔒 **2FA Detected**\n\n"
+                    "Account kamu menggunakan 2FA (Two-Factor Authentication).\n\n"
+                    "Masukkan **password 2FA** kamu:\n\n"
+                    "Ketik /cancel untuk batalkan."
+                ),
+                include_footer=False,
             )
-
-            if self.branding:
-                message = self.branding.wrap_message(message, include_footer=False)
 
             await event.reply(message)
         except Exception as e:
             logger.error(f"Error verifying OTP: {e}")
-            await event.reply(f"❌ **Error:** {str(e)}\n\nCoba lagi atau ketik /cancel")
+            await event.reply(
+                self.format_message(
+                    f"❌ **Error:** {str(e)}\n\nCoba lagi atau ketik /cancel"
+                )
+            )
 
     async def process_2fa(self, event, session, text):
         """Process 2FA password"""
         client = session.get('client')
         if not client:
-            await event.reply("❌ **Session expired!** Start again with /gensession")
+            await event.reply(
+                self.format_message("❌ **Session expired!** Start again with /gensession")
+            )
             del generation_sessions[event.sender_id]
             return
 
         try:
-            loading_msg = await event.reply("⏳ **Verifying 2FA password...**")
+            loading_msg = await event.reply(
+                self.format_message(
+                    "⏳ **Verifying 2FA password...**",
+                    include_footer=False,
+                )
+            )
 
             await client.sign_in(password=text)
 
@@ -401,20 +477,20 @@ class StringSessionHandler:
             session_string = client.session.save()
             await loading_msg.delete()
 
-            success_message = (
-                "✅ **Session String Generated!**\n\n"
-                "🔐 **SIMPAN SESSION INI:**\n\n"
-                f"`{session_string}`\n\n"
-                "**Cara pakai:**\n"
-                "1. Copy session string di atas\n"
-                "2. Paste ke `.env` file:\n"
-                "   `STRING_SESSION=session_string_kamu`\n"
-                "3. Restart bot\n\n"
-                "⚠️ **JANGAN SHARE KE SIAPAPUN!**"
+            success_message = self.format_message(
+                (
+                    "✅ **Session String Generated!**\n\n"
+                    "🔐 **SIMPAN SESSION INI:**\n\n"
+                    f"`{session_string}`\n\n"
+                    "**Cara pakai:**\n"
+                    "1. Copy session string di atas\n"
+                    "2. Paste ke `.env` file:\n"
+                    "   `STRING_SESSION=session_string_kamu`\n"
+                    "3. Restart bot\n\n"
+                    "⚠️ **JANGAN SHARE KE SIAPAPUN!**"
+                ),
+                include_footer=False,
             )
-
-            if self.branding:
-                success_message = self.branding.wrap_message(success_message, include_footer=False)
 
             await event.reply(success_message)
 
@@ -424,22 +500,28 @@ class StringSessionHandler:
 
         except Exception as e:
             logger.error(f"Error with 2FA: {e}")
-            await event.reply(f"❌ **Password 2FA salah!**\n\nCoba lagi:")
+            await event.reply(
+                self.format_message(f"❌ **Password 2FA salah!**\n\nCoba lagi:")
+            )
 
     async def handle_session_toggle(self, event):
         """Toggle session generation in groups (admin only)"""
         if not (event.is_group or event.is_channel):
-            await event.reply("❌ Command ini hanya untuk grup/channel!")
+            await event.reply(
+                self.format_message("❌ Command ini hanya untuk grup/channel!")
+            )
             return
 
         # Check if user is admin
         try:
             perms = await self.client.get_permissions(event.chat_id, event.sender_id)
             if not perms.is_admin:
-                await event.reply("❌ Hanya admin yang bisa mengubah setting ini!")
+                await event.reply(
+                    self.format_message("❌ Hanya admin yang bisa mengubah setting ini!")
+                )
                 return
         except:
-            await event.reply("❌ Gagal cek permission!")
+            await event.reply(self.format_message("❌ Gagal cek permission!"))
             return
 
         chat_id = event.chat_id
@@ -470,8 +552,7 @@ class StringSessionHandler:
                 "Ketik `/sessiontoggle` lagi untuk enable (not recommended)."
             )
 
-        if self.branding:
-            message = self.branding.wrap_message(message, include_footer=False)
+        message = self.format_message(message, include_footer=False)
 
         await event.reply(message)
 
