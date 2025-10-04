@@ -21,6 +21,7 @@ Commands untuk group management.
 
 **Commands:**
 - `/tagall` (reply) atau `/tagall <message>` - Tag all members
+- `.t [batch] <message>` atau `.t` (reply) - Tag all via editable batches (admin only)
 - `/cancel` - Stop ongoing tagall
 - `/pm @username` atau `/pm` (reply) - Promote to admin (requires admin rights)
 - `/dm @username` atau `/dm` (reply) - Demote from admin
@@ -37,7 +38,7 @@ Commands untuk group management.
 **Feature:** Visible di entry message (slash command suggestions)
 
 ### 3. `.` Prefix - ALL USERS
-Public commands yang bisa digunakan semua orang.
+Public commands yang bisa digunakan semua orang (kecuali `.t` yang khusus admin).
 
 **Commands:**
 - `.play <song>` - Play music

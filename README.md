@@ -99,6 +99,10 @@ ENABLE_TAG_SYSTEM=true
 ENABLE_WELCOME_SYSTEM=true
 ENABLE_GITHUB_SYNC=true
 ENABLE_PRIVACY_SYSTEM=true
+
+# Tag system tuning
+TAG_BATCH_SIZE=5
+TAG_DELAY=2.0
 ```
 
 ## Commands 📝
@@ -108,6 +112,7 @@ ENABLE_PRIVACY_SYSTEM=true
 - `/lock <user>` - Lock user (auto-delete messages)
 - `/unlock <user_id>` - Unlock user
 - `/tag <message>` - Tag all members progressively
+- `.t [batch] <message>` - Admin-only batch tag all (edits a single message)
 - `/ctag` - Cancel ongoing tag process
 
 ### Developer Commands (`.`)
