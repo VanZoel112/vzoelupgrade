@@ -33,6 +33,15 @@ class AuthManager:
         self.developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
         self.admin_chat_ids = set(getattr(config, "ADMIN_CHAT_IDS", []) or [])
         self.enable_public: bool = getattr(config, "ENABLE_PUBLIC_COMMANDS", True)
+        self._tag_command_prefixes = (".", "/", "+")
+        self._admin_tag_commands = {f"{prefix}t" for prefix in self._tag_command_prefixes}
+        self._admin_tag_cancel_commands = {f"{prefix}c" for prefix in self._tag_command_prefixes}
+        # Kompatibilitas mundur: atribut lama yang mungkin masih digunakan modul lain
+        self.admin_tag_commands = self._admin_tag_commands
+        self.admin_tag_cancel_commands = self._admin_tag_cancel_commands
+        self._admin_override_commands = (
+            self._admin_tag_commands | self._admin_tag_cancel_commands
+        )
         self._last_denied_reason: Optional[str] = None
 
     # ------------------------------------------------------------------ #
@@ -127,15 +136,27 @@ class AuthManager:
     # Command helpers
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _normalize_command(message_text: str) -> str:
+        if not message_text:
+            return ""
+        base = message_text.split()[0]
+        if '@' in base:
+            base = base.split('@', 1)[0]
+        return base.lower()
+
     def get_command_type(self, message_text: str) -> Optional[str]:
         """Determine command type based on prefix."""
-        if not message_text:
+        command = self._normalize_command(message_text)
+        if not command:
             return None
-        if message_text.startswith('+'):
-            return "owner"
-        elif message_text.startswith('/'):
+        if command in self._admin_override_commands:
             return "admin"
-        elif message_text.startswith('.'):
+        if command.startswith('+'):
+            return "owner"
+        if command.startswith('/'):
+            return "admin"
+        if command.startswith('.'):
             return "public"
         return None
 
@@ -147,7 +168,7 @@ class AuthManager:
         command_text: str,
     ) -> bool:
         """Main permission checker for commands."""
-        cmd = command_text.split()[0].lower() if command_text else ""
+        cmd = self._normalize_command(command_text)
 
         # Backward-compat: some slash-commands are public
         music_commands = ['/play', '/p', '/music', '/pause', '/resume', '/stop', '/end', '/queue', '/q']
@@ -163,6 +184,12 @@ class AuthManager:
         if command_type == "owner":
             return await self.can_use_owner_command(user_id)
         elif command_type == "admin":
+            if cmd in self._admin_override_commands:
+                return await self.can_use_admin_command(
+                    client,
+                    user_id,
+                    chat_id,
+                )
             allowed = await self.can_use_admin_command(
                 client,
                 user_id,
@@ -179,21 +206,31 @@ class AuthManager:
 
     async def log_command_usage(self, user_id: int, chat_id: int, command: str, success: bool):
         """Log command usage for monitoring."""
-        status = "SUCCESS" if success else "DENIED"
-        logger.info(f"Command {status}: user_id={user_id}, chat_id={chat_id}, command={command}")
+        status = "BERHASIL" if success else "DITOLAK"
+        logger.info(
+            "Command %s: user_id=%s, chat_id=%s, command=%s",
+            status,
+            user_id,
+            chat_id,
+            command,
+        )
 
     def get_permission_error_message(self, command_type: str) -> str:
         """Get appropriate error message for permission denial."""
         if self._last_denied_reason == "add_admins_required":
-            return "Access denied. This command requires Add Admins permission in this group."
+            return (
+                "Akses ditolak. Perintah ini memerlukan izin Tambah Admin di grup ini."
+            )
         if self._last_denied_reason == "not_chat_admin":
-            return "Access denied. Only group administrators can use this command."
+            return "Akses ditolak. Hanya admin grup yang dapat memakai perintah ini."
         if self._last_denied_reason == "permissions_unavailable":
-            return "Access denied. Unable to verify your admin permissions in this chat."
+            return (
+                "Akses ditolak. Sistem tidak dapat memverifikasi izin admin Anda dalam percakapan ini."
+            )
         if command_type == "owner":
-            return "Access denied. Owner-level authorization required."
+            return "Akses ditolak. Diperlukan otorisasi level owner."
         elif command_type == "admin":
-            return "Access denied. Admin authorization required."
+            return "Akses ditolak. Diperlukan otorisasi admin."
         elif command_type == "public":
-            return "Access denied. Public commands are disabled."
-        return "Access denied."
+            return "Akses ditolak. Perintah publik sedang dinonaktifkan."
+        return "Akses ditolak."

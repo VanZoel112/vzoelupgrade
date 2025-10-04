@@ -20,8 +20,8 @@ Commands untuk management bot dan user permissions.
 Commands untuk group management.
 
 **Commands:**
-- `/tagall` (reply) atau `/tagall <message>` - Tag all members
-- `/cancel` - Stop ongoing tagall
+- `/t [batch] <message>` atau `/t` (reply) - Tag semua anggota via edit batch (alias: `.t`, `+t`)
+- `/c` - Hentikan proses tag massal (alias: `.c`, `+c`)
 - `/pm @username` atau `/pm` (reply) - Promote to admin (requires admin rights)
 - `/dm @username` atau `/dm` (reply) - Demote from admin
 - `/lock @username` atau `/lock` (reply) - Auto-delete user messages
@@ -37,15 +37,15 @@ Commands untuk group management.
 **Feature:** Visible di entry message (slash command suggestions)
 
 ### 3. `.` Prefix - ALL USERS
-Public commands yang bisa digunakan semua orang.
+Public commands yang bisa digunakan semua orang (kecuali `.t` yang khusus admin).
 
-**Commands:**
 - `.play <song>` - Play music
 - `.pause` - Pause music
 - `.resume` - Resume music
 - `.stop` - Stop music
 - `.queue` - Show queue
 - `.gensession` - Generate session string (PM only)
+- `.t [batch] <message>` atau `.t` (reply) - Alias admin untuk `/t`
 
 **Permission:** Semua user
 
@@ -96,7 +96,7 @@ Public commands yang bisa digunakan semua orang.
 - [x] Implement `+add` and `+del` commands
 - [x] Implement `/pm` and `/dm` commands
 - [x] Implement `+setwelcome` command
-- [x] Implement `/cancel` command
+- [x] Implement `/c` command (alias `.c` / `+c`)
 - [x] Implement `/locklist` command
 - [x] Update `/lock` to use database (migrated to Database)
 - [x] Update welcome system to use database (migrated to Database)
