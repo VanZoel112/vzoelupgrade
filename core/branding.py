@@ -14,7 +14,7 @@ from typing import Dict, Optional
 class VBotBranding:
     """VBot branding and animation utilities"""
 
-    HEADER = "**VBot Music – {plugins} by VBot**"
+    HEADER = "**VBot Music & Clear Chat Management**"
     FOOTER = "**{plugins} by VBot**"
     DEFAULT_PLUGIN_NAME = "VBot"
 
