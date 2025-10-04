@@ -45,6 +45,7 @@ from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.utils import pack_bot_file_id
 from telethon.errors import (
     ChatAdminRequiredError,
+    MessageNotModifiedError,
     UserAlreadyParticipantError,
     UserPrivacyRestrictedError,
     UserNotMutualContactError,
@@ -108,6 +109,11 @@ class VBot:
         self._dot_tag_command = (prefix_dev + "t").lower()
         self._help_pages = self._build_help_pages()
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
+        self._project_root = Path(__file__).resolve().parent
+        try:
+            self._config_root = Path(config.__file__).resolve().parent
+        except Exception:
+            self._config_root = self._project_root
         self._visualizer_levels = "▁▂▃▄▅▆▇█"
         self._visualizer_width = getattr(config, "MUSIC_VISUALIZER_WIDTH", 18)
         self._admin_sync_cache: Dict[int, float] = {}
@@ -1446,6 +1452,45 @@ Contact @VZLfxs for support & inquiries
             except OSError as exc:
                 logger.error(f"Failed to write config.py for logo update: {exc}")
 
+    def _resolve_music_logo_local_candidates(self, path_value: str) -> List[Path]:
+        """Return unique candidate paths to try for a configured logo value."""
+
+        trimmed = path_value.strip()
+        if not trimmed:
+            return []
+
+        candidate_paths: List[Path] = []
+        raw_path = Path(trimmed).expanduser()
+
+        if raw_path.is_absolute():
+            candidate_paths.append(raw_path)
+        else:
+            candidate_paths.append(raw_path)
+            project_candidate = (self._project_root / trimmed).expanduser()
+            if project_candidate not in candidate_paths:
+                candidate_paths.append(project_candidate)
+
+            if self._config_root != self._project_root:
+                config_candidate = (self._config_root / trimmed).expanduser()
+                if config_candidate not in candidate_paths:
+                    candidate_paths.append(config_candidate)
+
+        resolved_candidates: List[Path] = []
+        seen: Set[Path] = set()
+        for candidate in candidate_paths:
+            try:
+                resolved = candidate.resolve(strict=False)
+            except OSError:
+                continue
+
+            if resolved in seen:
+                continue
+
+            seen.add(resolved)
+            resolved_candidates.append(resolved)
+
+        return resolved_candidates
+
     def _update_env_file_value(self, path: Path, key: str, value: str) -> None:
         """Insert or replace a key=value pair in an env file."""
 
@@ -1607,8 +1652,8 @@ Contact @VZLfxs for support & inquiries
             send_kwargs["buttons"] = buttons
 
         logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
-        try:
-            if logo_id:
+        if logo_id:
+            try:
                 await self.client.send_file(chat_id, logo_id, **send_kwargs)
                 if status_message:
                     try:
@@ -1616,13 +1661,14 @@ Contact @VZLfxs for support & inquiries
                     except Exception:
                         pass
                 return True
-        except Exception as exc:
-            logger.error(f"Failed to send configured music logo: {exc}")
+            except Exception as exc:
+                logger.error(f"Failed to send configured music logo: {exc}")
 
-        fallback_path = Path("assets/branding/vbot_branding.png")
-        if fallback_path.exists():
+        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "").strip()
+
+        async def _send_fallback(source: str) -> bool:
             try:
-                await self.client.send_file(chat_id, fallback_path, **send_kwargs)
+                await self.client.send_file(chat_id, source, **send_kwargs)
                 if status_message:
                     try:
                         await status_message.delete()
@@ -1630,13 +1676,39 @@ Contact @VZLfxs for support & inquiries
                         pass
                 return True
             except Exception as exc:
-                logger.error(f"Failed to send fallback branding image: {exc}")
+                logger.error(f"Failed to send fallback music logo from '{source}': {exc}")
+                return False
 
-        if status_message:
-            try:
-                await status_message.edit(caption, buttons=buttons)
-            except Exception as exc:
-                logger.error(f"Unable to update status message with caption fallback: {exc}")
+        if logo_path_value:
+            if logo_path_value.startswith(("http://", "https://")):
+                if await _send_fallback(logo_path_value):
+                    return True
+            else:
+                normalized_value = (
+                    logo_path_value[7:]
+                    if logo_path_value.startswith("file://")
+                    else logo_path_value
+                )
+                resolved_candidates = self._resolve_music_logo_local_candidates(
+                    normalized_value
+                )
+
+                for candidate in resolved_candidates:
+                    if candidate.is_file():
+                        if await _send_fallback(str(candidate)):
+                            return True
+
+                if not resolved_candidates:
+                    logger.error(
+                        "Configured music logo fallback path '%s' could not be resolved",
+                        logo_path_value,
+                    )
+                else:
+                    logger.error(
+                        "Configured music logo fallback path '%s' does not exist (checked: %s)",
+                        logo_path_value,
+                        ", ".join(str(path) for path in resolved_candidates),
+                    )
 
         return False
 
@@ -1925,7 +1997,15 @@ Contact @VZLfxs for support & inquiries
                     status_message=status_msg,
                 )
                 if not sent:
-                    await status_msg.edit(caption, buttons=buttons_param)
+                    try:
+                        await status_msg.edit(caption, buttons=buttons_param)
+                    except MessageNotModifiedError:
+                        logger.debug("Music status message was already up to date")
+                    except Exception as exc:
+                        logger.error(
+                            "Unable to update status message with caption fallback: %s",
+                            exc,
+                        )
 
                 return
 
