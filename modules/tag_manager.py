@@ -118,6 +118,7 @@ class TagManager:
             initial_text = (
                 f"{base_message}\n\nSedang memulai proses tag oleh Vzoel Fox's (Lutpan)..."
             )
+            initial_text = f"{base_message}\n\n⏳ Starting tag process..."
             message_obj = await client.send_message(
                 chat_id,
                 initial_text,

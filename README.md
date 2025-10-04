@@ -113,6 +113,9 @@ TAG_DELAY=2.0
 - `/unlock <user_id>` - Unlock user
 - `/t [batch] <message>` atau `/t` (reply) - Tag semua anggota secara bertahap (alias: `.t`, `+t`)
 - `/c` - Hentikan proses tag massal (alias: `.c`, `+c`)
+- `/tag <message>` - Tag all members progressively
+- `.t [batch] <message>` - Admin-only batch tag all (edits a single message)
+- `/ctag` - Cancel ongoing tag process
 
 ### Developer Commands (`.`)
 - `.stats` - Show bot statistics

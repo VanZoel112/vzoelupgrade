@@ -102,6 +102,11 @@ class VBot:
         self._premium_wrapper_ids: Set[int] = set()
         self._premium_wrapper_id_queue: Deque[int] = deque()
         self._premium_wrapper_id_limit = 4096
+        self._tag_prefixes = (".", "/", "+")
+        self._tag_start_commands = {f"{prefix}t" for prefix in self._tag_prefixes}
+        self._tag_stop_commands = {f"{prefix}c" for prefix in self._tag_prefixes}
+        prefix_dev = getattr(config, "PREFIX_DEV", ".") or "."
+        self._dot_tag_command = (prefix_dev + "t").lower()
 
     async def initialize(self):
         """Initialize VBot"""
@@ -716,6 +721,12 @@ class VBot:
             elif command == '/cancel' and not (message.is_group or message.is_channel):
                 # Biarkan generator session dan alur lainnya menangani /cancel di private chat
                 return
+            elif command == '/tagall':
+                await self._handle_tagall_command(message, parts)
+            elif command == self._dot_tag_command:
+                await self._handle_dot_tag_command(message)
+            elif command == '/cancel':
+                await self._handle_cancel_command(message)
 
             # Help command (available to all)
             elif command in ['/help', '#help']:
@@ -930,6 +941,9 @@ By Vzoel Fox's
                     ("`/locklist`", "Daftar pengguna yang terkunci"),
                     (f"{tag_start_display} [batch] <text>", "Mention semua anggota via edit batch"),
                     (f"{tag_stop_display}", "Batalkan penandaan massal"),
+                    ("`/tagall <text>`", "Mention semua anggota"),
+                    (f"`{self._dot_tag_command} [batch] <text>`", "Mention semua anggota via edit batch"),
+                    ("`/cancel`", "Batalkan penandaan massal"),
                 ],
             },
             {
@@ -2430,6 +2444,90 @@ Contact @VZLfxs for support & inquiries
             await message.reply(
                 VBotBranding.format_error(f"Galat sistem: {str(e)}")
             )
+
+    async def _handle_tag_cancel_command(self, message):
+        """Handle perintah pembatalan tag massal."""
+    async def _handle_dot_tag_command(self, message):
+        """Handle developer-prefix tag command (e.g. .t) for admins."""
+        if not config.ENABLE_TAG_SYSTEM:
+            await message.reply("**Tag system is currently disabled.**")
+            return
+
+        if not message.is_group and not message.is_channel:
+            await message.reply("**Tag all only works in groups!**")
+            return
+
+        try:
+            reply_message = None
+            if getattr(message, "is_reply", False):
+                try:
+                    reply_message = await message.get_reply_message()
+                except Exception as fetch_error:
+                    logger.debug("Failed to fetch replied message: %s", fetch_error)
+
+            raw_text = message.raw_text or message.text or ""
+            remainder = ""
+            if raw_text:
+                parts = raw_text.split(maxsplit=1)
+                if len(parts) > 1:
+                    remainder = parts[1].strip()
+
+            provided_batch: Optional[int] = None
+            custom_message = remainder
+
+            if remainder:
+                first_split = remainder.split(maxsplit=1)
+                candidate = first_split[0]
+                rest_text = first_split[1] if len(first_split) > 1 else ""
+                if candidate.isdigit():
+                    provided_batch = int(candidate)
+                    custom_message = rest_text.strip()
+                else:
+                    custom_message = remainder
+
+            if not custom_message and reply_message:
+                reply_text = getattr(reply_message, "raw_text", None) or getattr(reply_message, "message", "")
+                custom_message = reply_text.strip()
+
+            if not custom_message:
+                custom_message = "Tagging all members..."
+
+            reply_to_msg_id = getattr(message, "reply_to_msg_id", None)
+
+            success = await self.tag_manager.start_tag_all(
+                self.client,
+                message.chat_id,
+                custom_message,
+                message.sender_id,
+                batch_size=provided_batch,
+                reply_to_msg_id=reply_to_msg_id,
+            )
+
+            if not success:
+                if message.chat_id in self.tag_manager.active_tags:
+                    await message.reply(
+                        VBotBranding.format_error(
+                            "Proses tag massal sedang berlangsung. Tunggu hingga selesai atau gunakan `.c`/`/c`/`+c`."
+                        )
+                    )
+                else:
+                    await message.reply(
+                        VBotBranding.format_error(
+                            "Tag massal gagal dimulai. Periksa anggota dan izin bot."
+                        )
+                    )
+
+        except Exception as e:
+            logger.error(f"Error in tag command: {e}", exc_info=True)
+            await message.reply(
+                VBotBranding.format_error(f"Galat sistem: {str(e)}")
+            )
+                        "**Error:** Could not start tag all. No members found or insufficient permissions."
+                    )
+
+        except Exception as e:
+            logger.error(f"Error in dot tag command: {e}", exc_info=True)
+            await message.reply(f"**Error:** {str(e)}")
 
     async def _handle_tag_cancel_command(self, message):
         """Handle perintah pembatalan tag massal."""
