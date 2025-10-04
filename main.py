@@ -2634,8 +2634,6 @@ Contact @VZLfxs for support & inquiries
                 VBotBranding.format_error(f"Galat sistem: {str(e)}")
             )
 
-    async def _handle_tag_cancel_command(self, message):
-        """Handle perintah pembatalan tag massal."""
     async def _handle_dot_tag_command(self, message):
         """Handle developer-prefix tag command (e.g. .t) for admins."""
         if not config.ENABLE_TAG_SYSTEM:
@@ -2692,6 +2690,17 @@ Contact @VZLfxs for support & inquiries
                 reply_to_msg_id=reply_to_msg_id,
             )
 
+            if success:
+                confirm_text = (
+                    "**Tag all started**\n\n"
+                    f"**Message:** {custom_message}\n\n"
+                    "The bot will progressively mention members. Use `.c`/`/c`/`+c` to cancel."
+                )
+                await message.reply(
+                    VBotBranding.wrap_message(confirm_text, include_footer=False)
+                )
+                return
+
             if not success:
                 if message.chat_id in self.tag_manager.active_tags:
                     await message.reply(
@@ -2704,14 +2713,6 @@ Contact @VZLfxs for support & inquiries
                         VBotBranding.format_error(
                             "Tag massal gagal dimulai. Periksa anggota dan izin bot."
                         )
-                    )
-
-        except Exception as e:
-            logger.error(f"Error in tag command: {e}", exc_info=True)
-            await message.reply(
-                VBotBranding.format_error(f"Galat sistem: {str(e)}")
-            )
-                        "**Error:** Could not start tag all. No members found or insufficient permissions."
                     )
 
         except Exception as e:
