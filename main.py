@@ -2383,20 +2383,20 @@ Contact @VZLfxs for support & inquiries
                 elif target.isdigit():
                     target_user_id = int(target)
 
-        if not target_user_id:
-            usage_text = (
-                "**Usage:** `/dm @username` or `/dm <user_id>` or reply to message\n\n"
-                "**Examples:**\n"
-                "• `/dm @user`\n"
-                "• `/dm 123456789`\n"
-                "• Reply to admin message with `/dm`"
-            )
-            await self._reply_with_branding(
-                message,
-                usage_text,
-                include_footer=False,
-            )
-            return
+            if not target_user_id:
+                usage_text = (
+                    "**Usage:** `/dm @username` or `/dm <user_id>` or reply to message\n\n"
+                    "**Examples:**\n"
+                    "• `/dm @user`\n"
+                    "• `/dm 123456789`\n"
+                    "• Reply to admin message with `/dm`"
+                )
+                await self._reply_with_branding(
+                    message,
+                    usage_text,
+                    include_footer=False,
+                )
+                return
 
             # Demote user (remove admin rights)
             from telethon.tl.functions.channels import EditAdminRequest
@@ -2645,20 +2645,20 @@ Contact @VZLfxs for support & inquiries
             if not target_user_id:
                 target_user_id = await self.lock_manager.parse_lock_command(self.client, message)
 
-        if not target_user_id:
-            usage_text = (
-                "**Usage:** `/lock @username` or `/lock <user_id>` or reply to user's message\n\n"
-                "**Examples:**\n"
-                "• `/lock @spammer`\n"
-                "• `/lock 123456789`\n"
-                "• Reply to user message with `/lock`"
-            )
-            await self._reply_with_branding(
-                message,
-                usage_text,
-                include_footer=False,
-            )
-            return
+            if not target_user_id:
+                usage_text = (
+                    "**Usage:** `/lock @username` or `/lock <user_id>` or reply to user's message\n\n"
+                    "**Examples:**\n"
+                    "• `/lock @spammer`\n"
+                    "• `/lock 123456789`\n"
+                    "• Reply to user message with `/lock`"
+                )
+                await self._reply_with_branding(
+                    message,
+                    usage_text,
+                    include_footer=False,
+                )
+                return
 
             # Prevent locking bot developers/owners
             if self.auth_manager.is_developer(target_user_id) or self.auth_manager.is_owner(target_user_id):
@@ -2721,6 +2721,7 @@ Contact @VZLfxs for support & inquiries
                         "**Error:** Protected account detected but failed to apply the automatic lock.",
                         include_footer=False,
                     )
+
                 await self._reply_with_branding(
                     message,
                     "**Error:** You cannot lock bot developers or owners.",
@@ -2796,20 +2797,20 @@ Contact @VZLfxs for support & inquiries
             if not target_user_id:
                 target_user_id = await self.lock_manager.parse_lock_command(self.client, message)
 
-        if not target_user_id:
-            usage_text = (
-                "**Usage:** `/unlock @username` or `/unlock <user_id>` or reply to user's message\n\n"
-                "**Examples:**\n"
-                "• `/unlock @user`\n"
-                "• `/unlock 123456789`\n"
-                "• Reply to user message with `/unlock`"
-            )
-            await self._reply_with_branding(
-                message,
-                usage_text,
-                include_footer=False,
-            )
-            return
+            if not target_user_id:
+                usage_text = (
+                    "**Usage:** `/unlock @username` or `/unlock <user_id>` or reply to user's message\n\n"
+                    "**Examples:**\n"
+                    "• `/unlock @user`\n"
+                    "• `/unlock 123456789`\n"
+                    "• Reply to user message with `/unlock`"
+                )
+                await self._reply_with_branding(
+                    message,
+                    usage_text,
+                    include_footer=False,
+                )
+                return
 
             # Unlock the user
             metadata = self.lock_manager.get_lock_metadata(message.chat_id, target_user_id)
@@ -2958,7 +2959,7 @@ Contact @VZLfxs for support & inquiries
                 custom_message = "Sedang menandai seluruh anggota..."
 
             custom_message = (
-                f"{custom_message}\n\n_Disajikan oleh Vzoel Fox's (Lutpan)_"
+                f"{custom_message}\n\n_{{plugins}} by VBot_"
             )
 
             reply_to_msg_id = getattr(message, "reply_to_msg_id", None)

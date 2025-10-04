@@ -12,8 +12,8 @@ import asyncio
 class VBotBranding:
     """VBot branding and animation utilities"""
 
-    HEADER = "╭━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n│ **VBot Music By Vzoel Fox's** │\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯"
-    FOOTER = "╭━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n│ **2025© Vzoel Fox's Lutpan** │\n│      **@VZLfxs**      │\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯"
+    HEADER = "**VBot Music – {{plugins}} by VBot**"
+    FOOTER = "**{{plugins}} by VBot**"
 
     # Loading animation frames
     LOADING_FRAMES = [
