@@ -23,7 +23,16 @@ class TagManager:
         self.active_tags: Dict[int, Dict] = {}  # chat_id -> tag session info
         self.cancelled_tags: Set[int] = set()  # chat_ids with cancelled tags
 
-    async def start_tag_all(self, client, chat_id: int, message: str, sender_id: int) -> bool:
+    async def start_tag_all(
+        self,
+        client,
+        chat_id: int,
+        message: str,
+        sender_id: int,
+        *,
+        batch_size: Optional[int] = None,
+        reply_to_msg_id: Optional[int] = None,
+    ) -> bool:
         """Start progressive tag all process"""
         try:
             # Check if already tagging in this chat
@@ -35,6 +44,11 @@ class TagManager:
             if not members:
                 return False
 
+            # Determine batch size (ensure sane limits)
+            configured_batch = config.TAG_BATCH_SIZE if config.TAG_BATCH_SIZE > 0 else 5
+            resolved_batch = batch_size if batch_size and batch_size > 0 else configured_batch
+            resolved_batch = max(1, min(resolved_batch, 25))
+
             # Initialize tag session
             self.active_tags[chat_id] = {
                 'members': members,
@@ -42,7 +56,9 @@ class TagManager:
                 'sender_id': sender_id,
                 'current_index': 0,
                 'message_obj': None,
-                'tagged_count': 0
+                'tagged_count': 0,
+                'batch_size': resolved_batch,
+                'reply_to': reply_to_msg_id,
             }
 
             # Remove from cancelled set if present
@@ -51,7 +67,12 @@ class TagManager:
             # Start tagging process
             asyncio.create_task(self._progressive_tag_process(client, chat_id))
 
-            logger.info(f"Started tag all for {len(members)} members in chat {chat_id}")
+            logger.info(
+                "Started tag all for %s members in chat %s (batch_size=%s)",
+                len(members),
+                chat_id,
+                resolved_batch,
+            )
             return True
 
         except Exception as e:
@@ -91,11 +112,15 @@ class TagManager:
             session = self.active_tags[chat_id]
             members = session['members']
             base_message = session['message']
-            batch_size = 5  # Tag 5 users per edit
+            batch_size = session.get('batch_size', 5)
 
             # Send initial message
             initial_text = f"{base_message}\n\n⏳ Starting tag process..."
-            message_obj = await client.send_message(chat_id, initial_text)
+            message_obj = await client.send_message(
+                chat_id,
+                initial_text,
+                reply_to=session.get('reply_to'),
+            )
             session['message_obj'] = message_obj
 
             # Progressive tagging
