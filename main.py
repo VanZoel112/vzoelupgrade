@@ -1621,6 +1621,7 @@ Contact @VZLfxs for support & inquiries
                 logger.error(f"Failed to send configured music logo: {exc}")
 
         logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "").strip()
+        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "")
         logo_path = Path(logo_path_value).expanduser() if logo_path_value else None
 
         async def _send_fallback(source: str) -> bool:
@@ -1668,6 +1669,14 @@ Contact @VZLfxs for support & inquiries
                         "Configured music logo fallback path '%s' does not exist",
                         logo_path_value,
                     )
+            elif logo_path and logo_path.is_file():
+                if await _send_fallback(str(logo_path)):
+                    return True
+            else:
+                logger.error(
+                    "Configured music logo fallback path '%s' does not exist",
+                    logo_path_value,
+                )
 
         return False
 
