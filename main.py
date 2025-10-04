@@ -1738,6 +1738,13 @@ Contact @VZLfxs for support & inquiries
                 if await _send_fallback(logo_path_value):
                     return True
             else:
+                candidate_value = logo_path_value
+                if lowered_path_value.startswith("file://"):
+                    candidate_value = logo_path_value[7:]
+
+                candidate_value = self._coerce_music_logo_path(candidate_value)
+                resolved_candidates = self._resolve_music_logo_local_candidates(
+                    candidate_value
                 normalized_value = self._coerce_music_logo_path(
                     logo_path_value[7:]
                     if lowered_path_value.startswith("file://")
