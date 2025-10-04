@@ -11,6 +11,7 @@ import asyncio
 import io
 import json
 import logging
+import random
 import re
 import sys
 import time
@@ -107,6 +108,8 @@ class VBot:
         self._dot_tag_command = (prefix_dev + "t").lower()
         self._help_pages = self._build_help_pages()
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
+        self._visualizer_levels = "▁▂▃▄▅▆▇█"
+        self._visualizer_width = getattr(config, "MUSIC_VISUALIZER_WIDTH", 18)
         self._admin_sync_cache: Dict[int, float] = {}
         self._admin_sync_interval = getattr(config, "GROUP_ADMIN_SYNC_INTERVAL", 600)
         self._premium_wrapper_ids: Set[int] = set()
@@ -1474,6 +1477,25 @@ Contact @VZLfxs for support & inquiries
         except OSError as exc:
             logger.error(f"Failed to write {path} for env update: {exc}")
 
+    def _generate_visualizer(self, song_entry: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Generate a lightweight pseudo audio visualizer line."""
+        if not song_entry:
+            return None
+
+        try:
+            width = int(self._visualizer_width)
+        except Exception:
+            width = 18
+
+        width = max(8, min(width, 32))
+        levels = self._visualizer_levels or "▁▂▃▄▅▆▇█"
+
+        timestamp = int(time.time() // 2)
+        seed_value = f"{song_entry.get('title', '')}:{timestamp}"
+        rng = random.Random(seed_value)
+        bars = ''.join(rng.choice(levels) for _ in range(width))
+        return f"🎶 {bars}"
+
     def _build_music_status_message(self, chat_id: int) -> str:
         """Return formatted status for current playback."""
         if not self.music_manager:
@@ -1500,6 +1522,10 @@ Contact @VZLfxs for support & inquiries
             mode_label = "Audio" if stream_mode == 'audio' else "Video"
             lines.append(f"**Status:** {status_label}")
             lines.append(f"**Mode:** Streaming ({mode_label})")
+            visualizer = self._generate_visualizer(current)
+            if visualizer:
+                lines.append("")
+                lines.append(visualizer)
         else:
             lines.append("📭 **No active playback**")
 
@@ -1562,6 +1588,57 @@ Contact @VZLfxs for support & inquiries
                 Button.inline("📜 Queue", f"music:queue:{chat_id}".encode()),
             ],
         ]
+
+    async def _send_music_logo_message(
+        self,
+        chat_id: int,
+        caption: str,
+        *,
+        buttons: Optional[List[List[Button]]] = None,
+        status_message=None,
+    ) -> bool:
+        """Send the configured music logo with fallbacks."""
+
+        send_kwargs = {
+            "caption": caption,
+            "force_document": False,
+        }
+        if buttons:
+            send_kwargs["buttons"] = buttons
+
+        logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
+        try:
+            if logo_id:
+                await self.client.send_file(chat_id, logo_id, **send_kwargs)
+                if status_message:
+                    try:
+                        await status_message.delete()
+                    except Exception:
+                        pass
+                return True
+        except Exception as exc:
+            logger.error(f"Failed to send configured music logo: {exc}")
+
+        fallback_path = Path("assets/branding/vbot_branding.png")
+        if fallback_path.exists():
+            try:
+                await self.client.send_file(chat_id, fallback_path, **send_kwargs)
+                if status_message:
+                    try:
+                        await status_message.delete()
+                    except Exception:
+                        pass
+                return True
+            except Exception as exc:
+                logger.error(f"Failed to send fallback branding image: {exc}")
+
+        if status_message:
+            try:
+                await status_message.edit(caption, buttons=buttons)
+            except Exception as exc:
+                logger.error(f"Unable to update status message with caption fallback: {exc}")
+
+        return False
 
     def _format_music_queue_response(self, chat_id: int, result: Dict) -> str:
         """Format response when a track is added to the queue."""
@@ -1831,8 +1908,6 @@ Contact @VZLfxs for support & inquiries
                 )
                 return
 
-            logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
-
             if result.get('streaming'):
                 if result.get('queued'):
                     response = self._format_music_queue_response(message.chat_id, result)
@@ -1843,23 +1918,13 @@ Contact @VZLfxs for support & inquiries
                 buttons = self._build_music_control_buttons(message.chat_id)
                 buttons_param = buttons if buttons else None
 
-                if logo_id:
-                    try:
-                        await self.client.send_file(
-                            message.chat_id,
-                            logo_id,
-                            caption=caption,
-                            buttons=buttons_param,
-                            force_document=False,
-                        )
-                        try:
-                            await status_msg.delete()
-                        except Exception:
-                            pass
-                    except Exception as send_error:
-                        logger.error(f"Failed to send logo artwork: {send_error}")
-                        await status_msg.edit(caption, buttons=buttons_param)
-                else:
+                sent = await self._send_music_logo_message(
+                    message.chat_id,
+                    caption,
+                    buttons=buttons_param,
+                    status_message=status_msg,
+                )
+                if not sent:
                     await status_msg.edit(caption, buttons=buttons_param)
 
                 return
