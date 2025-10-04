@@ -11,6 +11,8 @@ import asyncio
 import io
 import json
 import logging
+import mimetypes
+import os
 import random
 import re
 import sys
@@ -20,8 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
-from typing import Any, Deque, Dict, Optional, List, Set, Tuple
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 
 try:
     import uvloop
@@ -45,6 +46,7 @@ from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.utils import pack_bot_file_id
 from telethon.errors import (
     ChatAdminRequiredError,
+    MessageNotModifiedError,
     UserAlreadyParticipantError,
     UserPrivacyRestrictedError,
     UserNotMutualContactError,
@@ -107,7 +109,17 @@ class VBot:
         prefix_dev = getattr(config, "PREFIX_DEV", ".") or "."
         self._dot_tag_command = (prefix_dev + "t").lower()
         self._help_pages = self._build_help_pages()
-        self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
+        self._music_logo_file_id = self._coerce_music_logo_id(
+            getattr(config, "MUSIC_LOGO_FILE_ID", "")
+        )
+        self._music_logo_file_path = self._coerce_music_logo_path(
+            getattr(config, "MUSIC_LOGO_FILE_PATH", "")
+        )
+        self._project_root = Path(__file__).resolve().parent
+        try:
+            self._config_root = Path(config.__file__).resolve().parent
+        except Exception:
+            self._config_root = self._project_root
         self._visualizer_levels = "▁▂▃▄▅▆▇█"
         self._visualizer_width = getattr(config, "MUSIC_VISUALIZER_WIDTH", 18)
         self._admin_sync_cache: Dict[int, float] = {}
@@ -440,6 +452,10 @@ class VBot:
         **kwargs: Any,
     ):
         """Send a message while honouring premium emoji mappings."""
+
+        if "caption" in kwargs:
+            logger.debug("Dropping unsupported caption argument from send_message call")
+            kwargs.pop("caption")
 
         prepared = await self._convert_for_user(text, user_id)
         result = await self.client.send_message(
@@ -968,10 +984,15 @@ By Vzoel Fox's
                     ]
                 ]
 
-            await message.reply(
-                VBotBranding.wrap_message(welcome_text, include_footer=False),
-                buttons=buttons
+            caption = VBotBranding.wrap_message(welcome_text, include_footer=False)
+            sent = await self._send_music_logo_message(
+                message.chat_id,
+                caption,
+                buttons=buttons,
+                reply_to=getattr(message, "id", None),
             )
+            if not sent:
+                await message.reply(caption, buttons=buttons)
 
         except Exception as e:
             logger.error(f"Error in start command: {e}")
@@ -1163,10 +1184,15 @@ Contact @VZLfxs for support & inquiries
                 ]
             ]
 
-            await message.reply(
-                VBotBranding.wrap_message(about_text, include_footer=False),
-                buttons=buttons
+            caption = VBotBranding.wrap_message(about_text, include_footer=False)
+            sent = await self._send_music_logo_message(
+                message.chat_id,
+                caption,
+                buttons=buttons,
+                reply_to=getattr(message, "id", None),
             )
+            if not sent:
+                await message.reply(caption, buttons=buttons)
 
         except Exception as e:
             logger.error(f"Error in about command: {e}")
@@ -1230,7 +1256,7 @@ Contact @VZLfxs for support & inquiries
             await message.reply(VBotBranding.format_error(f"Gagal mengambil metadata: {exc}"))
 
     async def _handle_setlogo_command(self, message):
-        """Persist the replied media file_id as the default music artwork."""
+        """Persist the replied media as the default music artwork."""
 
         try:
             sender_id = getattr(message, "sender_id", 0)
@@ -1257,13 +1283,34 @@ Contact @VZLfxs for support & inquiries
                 await message.reply(VBotBranding.format_error("Tidak dapat menemukan file_id dari media yang dibalas."))
                 return
 
-            await self._update_music_logo_file_id(file_id)
+            try:
+                downloaded_path = await self._download_music_logo_asset(reply)
+            except Exception as download_error:
+                logger.error(
+                    "Failed to store replied logo asset: %s",
+                    download_error,
+                )
+                await message.reply(
+                    VBotBranding.format_error(
+                        f"Gagal menyimpan logo lokal: {download_error}"
+                    )
+                )
+                return
 
-            success_text = (
-                "Logo musik berhasil diperbarui dan disimpan."
-                "\nFile ID sudah ditulis ke .env dan config.py."
+            await self._persist_music_logo_settings(
+                file_id=file_id,
+                file_path=str(downloaded_path),
             )
-            await message.reply(VBotBranding.format_success(success_text))
+
+            success_lines = [
+                "Logo musik berhasil diperbarui dan disimpan.",
+                "File ID dan path lokal telah ditulis ke .env dan config.py.",
+                f"Path lokal: `{downloaded_path}`",
+            ]
+            await message.reply(
+                VBotBranding.format_success("\n".join(success_lines))
+            )
+            metadata["local_path"] = str(downloaded_path)
             await self._deliver_json_metadata(
                 message.chat_id,
                 message.id,
@@ -1408,17 +1455,49 @@ Contact @VZLfxs for support & inquiries
     async def _update_music_logo_file_id(self, file_id: str) -> None:
         """Persist the logo file id to runtime, config.py, and .env."""
 
-        self._music_logo_file_id = file_id
-        config.MUSIC_LOGO_FILE_ID = file_id
+        await self._persist_music_logo_settings(file_id=file_id)
+
+    async def _persist_music_logo_settings(
+        self,
+        *,
+        file_id: Optional[str] = None,
+        file_path: Optional[str] = None,
+    ) -> None:
+        """Update runtime and persistent configuration for logo assets."""
+
+        if file_id is not None:
+            self._music_logo_file_id = self._coerce_music_logo_id(file_id)
+            config.MUSIC_LOGO_FILE_ID = self._music_logo_file_id
+
+        if file_path is not None:
+            self._music_logo_file_path = self._coerce_music_logo_path(file_path)
+            config.MUSIC_LOGO_FILE_PATH = self._music_logo_file_path
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._write_music_logo_configuration, file_id)
+        await loop.run_in_executor(
+            None,
+            self._write_music_logo_configuration,
+            file_id if file_id is not None else None,
+            file_path if file_path is not None else None,
+        )
 
-    def _write_music_logo_configuration(self, file_id: str) -> None:
-        """Write the logo file id to .env and config.py."""
+    def _write_music_logo_configuration(
+        self,
+        file_id: Optional[str],
+        file_path: Optional[str],
+    ) -> None:
+        """Write logo configuration values to .env and config.py."""
+
+        if file_id is None and file_path is None:
+            return
 
         env_path = Path(".env").resolve()
-        self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_ID", file_id)
+        if file_id is not None:
+            coerced_id = self._coerce_music_logo_id(file_id)
+            self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_ID", coerced_id)
+        if file_path is not None:
+            coerced_path = self._coerce_music_logo_path(file_path)
+            self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_PATH", coerced_path)
 
         config_path = Path(config.__file__).resolve()
         try:
@@ -1427,24 +1506,182 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Failed to read config.py for logo update: {exc}")
             return
 
-        pattern = re.compile(
-            r'MUSIC_LOGO_FILE_ID = os\.getenv\("MUSIC_LOGO_FILE_ID", ".*?"\)'
-        )
-        replacement = f'MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "{file_id}")'
-        if pattern.search(content):
-            new_content = pattern.sub(replacement, content, count=1)
-        else:
-            new_content = content.replace(
-                'MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "")',
-                replacement,
-                1,
+        new_content = content
+
+        if file_id is not None:
+            coerced_id = self._coerce_music_logo_id(file_id)
+            escaped_id = self._escape_config_string(coerced_id)
+            id_pattern = re.compile(
+                r'MUSIC_LOGO_FILE_ID = os\.getenv\("MUSIC_LOGO_FILE_ID", ".*?"\)'
             )
+            id_replacement = (
+                f'MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "{escaped_id}")'
+            )
+            if id_pattern.search(new_content):
+                new_content = id_pattern.sub(id_replacement, new_content, count=1)
+            else:
+                new_content = new_content.replace(
+                    'MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "")',
+                    id_replacement,
+                    1,
+                )
+
+        if file_path is not None:
+            coerced_path = self._coerce_music_logo_path(file_path)
+            escaped_path = self._escape_config_string(coerced_path)
+            path_pattern = re.compile(
+                r'MUSIC_LOGO_FILE_PATH = os\.getenv\("MUSIC_LOGO_FILE_PATH", [^\n]+\)'
+            )
+            path_replacement = (
+                f'MUSIC_LOGO_FILE_PATH = os.getenv("MUSIC_LOGO_FILE_PATH", "{escaped_path}")'
+            )
+            if path_pattern.search(new_content):
+                new_content = path_pattern.sub(path_replacement, new_content, count=1)
+            else:
+                new_content = new_content.replace(
+                    'MUSIC_LOGO_FILE_PATH = os.getenv("MUSIC_LOGO_FILE_PATH", _default_music_logo_path_value)',
+                    path_replacement,
+                    1,
+                )
 
         if new_content != content:
             try:
                 config_path.write_text(new_content, encoding="utf-8")
             except OSError as exc:
                 logger.error(f"Failed to write config.py for logo update: {exc}")
+
+    @staticmethod
+    def _coerce_music_logo_id(value: Any) -> str:
+        """Convert a configured logo file id into a clean string."""
+
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            try:
+                return value.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                return value.decode("utf-8", "ignore").strip()
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
+
+    def _coerce_music_logo_path(self, value: Any) -> str:
+        """Convert a configured logo file path into a clean string."""
+
+        if value is None:
+            return ""
+        if isinstance(value, Path):
+            return str(value).strip()
+        if isinstance(value, bytes):
+            try:
+                value = value.decode("utf-8")
+            except UnicodeDecodeError:
+                value = value.decode("utf-8", "ignore")
+        try:
+            coerced = os.fspath(value)
+        except TypeError:
+            coerced = str(value)
+        return str(coerced).strip()
+
+    @staticmethod
+    def _escape_config_string(value: str) -> str:
+        """Escape a config string for safe inclusion in generated Python code."""
+
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
+    def _determine_music_logo_extension(self, message) -> str:
+        """Return an appropriate extension for a downloaded music logo asset."""
+
+        allowed = {".jpg", ".jpeg", ".png", ".webp"}
+        file_info = getattr(message, "file", None)
+        candidate: Optional[str] = None
+
+        if file_info is not None:
+            candidate = getattr(file_info, "ext", None)
+            if candidate:
+                if not candidate.startswith("."):
+                    candidate = f".{candidate}"
+                candidate = candidate.lower()
+        if not candidate and file_info is not None:
+            mime_type = getattr(file_info, "mime_type", None)
+            if isinstance(mime_type, str):
+                guessed = mimetypes.guess_extension(mime_type.split(";")[0].strip())
+                if guessed:
+                    candidate = guessed.lower()
+
+        if candidate not in allowed:
+            candidate = ".jpg"
+
+        return candidate
+
+    async def _download_music_logo_asset(self, message) -> Path:
+        """Download a replied media message into the branding assets directory."""
+
+        target_dir = (self._project_root / "assets" / "branding").resolve()
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise RuntimeError(f"Tidak dapat membuat folder branding: {exc}") from exc
+
+        extension = self._determine_music_logo_extension(message)
+        target_path = target_dir / f"music_logo{extension}"
+
+        for existing in target_dir.glob("music_logo.*"):
+            if existing == target_path:
+                continue
+            try:
+                existing.unlink()
+            except OSError:
+                pass
+
+        downloaded = await message.download_media(file=str(target_path))
+        if not downloaded:
+            raise RuntimeError("Telethon tidak mengembalikan path file hasil unduhan.")
+
+        resolved_path = Path(downloaded).resolve()
+        if not resolved_path.exists():
+            raise RuntimeError("File logo tidak ditemukan setelah diunduh.")
+
+        return resolved_path
+
+    def _resolve_music_logo_local_candidates(self, path_value: Any) -> List[Path]:
+        """Return unique candidate paths to try for a configured logo value."""
+
+        trimmed = self._coerce_music_logo_path(path_value)
+        if not trimmed:
+            return []
+
+        candidate_paths: List[Path] = []
+        raw_path = Path(trimmed).expanduser()
+
+        if raw_path.is_absolute():
+            candidate_paths.append(raw_path)
+        else:
+            candidate_paths.append(raw_path)
+            project_candidate = (self._project_root / trimmed).expanduser()
+            if project_candidate not in candidate_paths:
+                candidate_paths.append(project_candidate)
+
+            if self._config_root != self._project_root:
+                config_candidate = (self._config_root / trimmed).expanduser()
+                if config_candidate not in candidate_paths:
+                    candidate_paths.append(config_candidate)
+
+        resolved_candidates: List[Path] = []
+        seen: Set[Path] = set()
+        for candidate in candidate_paths:
+            try:
+                resolved = candidate.resolve(strict=False)
+            except OSError:
+                continue
+
+            if resolved in seen:
+                continue
+
+            seen.add(resolved)
+            resolved_candidates.append(resolved)
+
+        return resolved_candidates
 
     def _update_env_file_value(self, path: Path, key: str, value: str) -> None:
         """Insert or replace a key=value pair in an env file."""
@@ -1596,6 +1833,7 @@ Contact @VZLfxs for support & inquiries
         *,
         buttons: Optional[List[List[Button]]] = None,
         status_message=None,
+        reply_to: Optional[int] = None,
     ) -> bool:
         """Send the configured music logo with fallbacks."""
 
@@ -1605,10 +1843,15 @@ Contact @VZLfxs for support & inquiries
         }
         if buttons:
             send_kwargs["buttons"] = buttons
+        if reply_to:
+            send_kwargs["reply_to"] = reply_to
 
-        logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
-        try:
-            if logo_id:
+        raw_logo_id = self._music_logo_file_id or getattr(
+            config, "MUSIC_LOGO_FILE_ID", ""
+        )
+        logo_id = self._coerce_music_logo_id(raw_logo_id)
+        if logo_id:
+            try:
                 await self.client.send_file(chat_id, logo_id, **send_kwargs)
                 if status_message:
                     try:
@@ -1616,13 +1859,17 @@ Contact @VZLfxs for support & inquiries
                     except Exception:
                         pass
                 return True
-        except Exception as exc:
-            logger.error(f"Failed to send configured music logo: {exc}")
+            except Exception as exc:
+                logger.error(f"Failed to send configured music logo: {exc}")
 
-        fallback_path = Path("assets/branding/vbot_branding.png")
-        if fallback_path.exists():
+        configured_path = self._music_logo_file_path or getattr(
+            config, "MUSIC_LOGO_FILE_PATH", ""
+        )
+        logo_path_value = self._coerce_music_logo_path(configured_path)
+
+        async def _send_fallback(source: str) -> bool:
             try:
-                await self.client.send_file(chat_id, fallback_path, **send_kwargs)
+                await self.client.send_file(chat_id, source, **send_kwargs)
                 if status_message:
                     try:
                         await status_message.delete()
@@ -1630,13 +1877,40 @@ Contact @VZLfxs for support & inquiries
                         pass
                 return True
             except Exception as exc:
-                logger.error(f"Failed to send fallback branding image: {exc}")
+                logger.error(f"Failed to send fallback music logo from '{source}': {exc}")
+                return False
 
-        if status_message:
-            try:
-                await status_message.edit(caption, buttons=buttons)
-            except Exception as exc:
-                logger.error(f"Unable to update status message with caption fallback: {exc}")
+        if logo_path_value:
+            lowered_path_value = logo_path_value.lower()
+            if lowered_path_value.startswith(("http://", "https://")):
+                if await _send_fallback(logo_path_value):
+                    return True
+            else:
+                candidate_value = logo_path_value
+                if lowered_path_value.startswith("file://"):
+                    candidate_value = logo_path_value[7:]
+
+                candidate_value = self._coerce_music_logo_path(candidate_value)
+                resolved_candidates = self._resolve_music_logo_local_candidates(
+                    candidate_value
+                )
+
+                for candidate in resolved_candidates:
+                    if candidate.is_file():
+                        if await _send_fallback(str(candidate)):
+                            return True
+
+                if not resolved_candidates:
+                    logger.error(
+                        "Configured music logo fallback path '%s' could not be resolved",
+                        logo_path_value,
+                    )
+                else:
+                    logger.error(
+                        "Configured music logo fallback path '%s' does not exist (checked: %s)",
+                        logo_path_value,
+                        ", ".join(str(path) for path in resolved_candidates),
+                    )
 
         return False
 
@@ -1925,7 +2199,15 @@ Contact @VZLfxs for support & inquiries
                     status_message=status_msg,
                 )
                 if not sent:
-                    await status_msg.edit(caption, buttons=buttons_param)
+                    try:
+                        await status_msg.edit(caption, buttons=buttons_param)
+                    except MessageNotModifiedError:
+                        logger.debug("Music status message was already up to date")
+                    except Exception as exc:
+                        logger.error(
+                            "Unable to update status message with caption fallback: %s",
+                            exc,
+                        )
 
                 return
 

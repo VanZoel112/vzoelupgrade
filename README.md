@@ -103,6 +103,12 @@ ENABLE_PRIVACY_SYSTEM=true
 # Tag system tuning
 TAG_BATCH_SIZE=5
 TAG_DELAY=2.0
+
+# Music branding
+# Provide either a Telegram file ID or a local/HTTP path to an existing image.
+# Binary logo assets are not bundled with the project, so point this to your own file if desired.
+MUSIC_LOGO_FILE_ID=
+MUSIC_LOGO_FILE_PATH=
 ```
 
 ## Commands 📝
