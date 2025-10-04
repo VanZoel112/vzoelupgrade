@@ -588,7 +588,9 @@ class VBot:
                         self.client, message, error_msg
                     )
                 else:
-                    await message.reply(error_msg)
+                    await message.reply(
+                        VBotBranding.format_error(error_msg)
+                    )
                 return
 
             # Pre-run visual phases
@@ -766,11 +768,51 @@ class VBot:
 
             else:
                 # Unknown command
-                await message.reply(f"Unknown command: {command}\n\nType /start to see available commands.")
+                await self._reply_with_branding(
+                    message,
+                    (
+                        f"Unknown command: {command}\n\n"
+                        "Type /start to see available commands."
+                    ),
+                    include_footer=False,
+                )
 
         except Exception as e:
             logger.error(f"Error routing command {command}: {e}")
             await message.reply(VBotBranding.format_error(f"Command error: {str(e)}"))
+
+    @staticmethod
+    def _format_branded(
+        content: str,
+        *,
+        include_header: bool = True,
+        include_footer: bool = True,
+    ) -> str:
+        """Apply standard VBot branding to outgoing messages."""
+        return VBotBranding.wrap_message(
+            content,
+            include_header=include_header,
+            include_footer=include_footer,
+        )
+
+    async def _reply_with_branding(
+        self,
+        message,
+        content: str,
+        *,
+        include_header: bool = True,
+        include_footer: bool = True,
+        **kwargs,
+    ):
+        """Reply to a message with branded content."""
+        return await message.reply(
+            self._format_branded(
+                content,
+                include_header=include_header,
+                include_footer=include_footer,
+            ),
+            **kwargs,
+        )
 
     async def _run_command_edit_phases(self, message, command):
         """Display a simple 4-phase status update for any command"""
@@ -782,7 +824,11 @@ class VBot:
         ]
 
         try:
-            status_message = await message.reply(phases[0])
+            status_message = await self._reply_with_branding(
+                message,
+                phases[0],
+                include_footer=False,
+            )
         except Exception as reply_error:
             logger.debug(f"Unable to send status message: {reply_error}")
             return None
@@ -790,7 +836,9 @@ class VBot:
         for phase_text in phases[1:]:
             await asyncio.sleep(0.5)
             try:
-                await status_message.edit(phase_text)
+                await status_message.edit(
+                    self._format_branded(phase_text, include_footer=False)
+                )
             except Exception as edit_error:
                 logger.debug(f"Failed to edit status message: {edit_error}")
                 break
@@ -919,7 +967,11 @@ By Vzoel Fox's
 
         except Exception as e:
             logger.error(f"Error in start command: {e}")
-            await message.reply("Welcome to VBot!\n\nType /help for commands.")
+            await self._reply_with_branding(
+                message,
+                "Welcome to VBot!\n\nType /help for commands.",
+                include_footer=False,
+            )
 
     def _build_help_pages(self) -> List[Dict[str, object]]:
         """Define help sections for slash commands."""
@@ -1047,7 +1099,10 @@ By Vzoel Fox's
 
         except Exception as e:
             logger.error(f"Error in help command: {e}")
-            await message.reply("Help system error. Please contact support.")
+            await self._reply_with_branding(
+                message,
+                "Help system error. Please contact support.",
+            )
 
     async def _handle_about_command(self, message):
         """Handle /about command - show bot info"""
@@ -1108,7 +1163,11 @@ Contact @VZLfxs for support & inquiries
 
         except Exception as e:
             logger.error(f"Error in about command: {e}")
-            await message.reply("VBot v2.0.0 by Vzoel Fox's")
+            await self._reply_with_branding(
+                message,
+                "VBot v2.0.0 by Vzoel Fox's",
+                include_footer=False,
+            )
 
     async def _handle_showjson_command(self, message):
         """Return structured metadata for the replied message."""
@@ -1129,7 +1188,11 @@ Contact @VZLfxs for support & inquiries
 
             reply = await message.get_reply_message()
             if not reply:
-                await message.reply("Balas ke pesan atau media yang ingin dianalisis dengan perintah ini.")
+                await self._reply_with_branding(
+                    message,
+                    "Balas ke pesan atau media yang ingin dianalisis dengan perintah ini.",
+                    include_footer=False,
+                )
                 return
 
             metadata = await self._extract_message_metadata(reply)
@@ -1174,7 +1237,11 @@ Contact @VZLfxs for support & inquiries
 
             reply = await message.get_reply_message()
             if not reply:
-                await message.reply("Balas ke foto/stiker/logo yang ingin dijadikan cover musik.")
+                await self._reply_with_branding(
+                    message,
+                    "Balas ke foto/stiker/logo yang ingin dijadikan cover musik.",
+                    include_footer=False,
+                )
                 return
 
             metadata = await self._extract_message_metadata(reply)
@@ -1698,21 +1765,34 @@ Contact @VZLfxs for support & inquiries
     async def _handle_music_command(self, message, parts, audio_only=True):
         """Handle music download/stream commands"""
         if not config.MUSIC_ENABLED:
-            await message.reply("Music system is disabled")
+            await self._reply_with_branding(
+                message,
+                "Music system is disabled",
+                include_footer=False,
+            )
             return
 
         if not self.music_manager:
-            await message.reply("Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             if len(parts) < 2:
                 media_type = "audio" if audio_only else "video"
-                await message.reply(
+                usage_text = (
                     f"**Usage:** {parts[0]} <query or URL>\n\n"
                     f"**Examples:**\n"
                     f"{parts[0]} shape of you\n"
                     f"{parts[0]} https://youtu.be/..."
+                )
+                await self._reply_with_branding(
+                    message,
+                    usage_text,
+                    include_footer=False,
                 )
                 return
 
@@ -1723,7 +1803,11 @@ Contact @VZLfxs for support & inquiries
 
             # Show animated processing message
             media_type = "audio" if audio_only else "video"
-            status_msg = await message.reply(f"Searching for {media_type}...")
+            status_msg = await self._reply_with_branding(
+                message,
+                f"Searching for {media_type}...",
+                include_footer=False,
+            )
 
             # Delegate to music manager
             result = await self.music_manager.play_stream(
@@ -1735,7 +1819,12 @@ Contact @VZLfxs for support & inquiries
 
             if not result.get('success'):
                 error_msg = result.get('error', 'Unknown error')
-                await status_msg.edit(f"**Error:** {error_msg}")
+                await status_msg.edit(
+                    self._format_branded(
+                        f"**Error:** {error_msg}",
+                        include_footer=False,
+                    )
+                )
                 return
 
             logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
@@ -1875,143 +1964,275 @@ Contact @VZLfxs for support & inquiries
     async def _handle_pause_command(self, message):
         """Handle /pause command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             result = await self.music_manager.pause(message.chat_id)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Pause error: {e}")
-            await message.reply(f"❌ Pause failed: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Pause failed: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_resume_command(self, message):
         """Handle /resume command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             result = await self.music_manager.resume(message.chat_id)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Resume error: {e}")
-            await message.reply(f"❌ Resume failed: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Resume failed: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_skip_command(self, message):
         """Handle /skip command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             result = await self.music_manager.skip(message.chat_id)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Skip error: {e}")
-            await message.reply(f"❌ Skip failed: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Skip failed: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_stop_command(self, message):
         """Handle /stop command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             result = await self.music_manager.stop(message.chat_id)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Stop error: {e}")
-            await message.reply(f"❌ Stop failed: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Stop failed: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_queue_command(self, message):
         """Handle /queue command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             result = await self.music_manager.show_queue(message.chat_id)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Queue error: {e}")
-            await message.reply(f"❌ Queue error: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Queue error: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_shuffle_command(self, message):
         """Handle /shuffle command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             result = await self.music_manager.shuffle(message.chat_id)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Shuffle error: {e}")
-            await message.reply(f"❌ Shuffle failed: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Shuffle failed: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_loop_command(self, message, parts):
         """Handle /loop command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             mode = parts[1].lower() if len(parts) > 1 else "toggle"
             result = await self.music_manager.set_loop(message.chat_id, mode)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Loop error: {e}")
-            await message.reply(f"❌ Loop error: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Loop error: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_seek_command(self, message, parts):
         """Handle /seek command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             if len(parts) < 2:
-                await message.reply("**Usage:** `/seek <seconds>`\n\n**Example:** `/seek 60`")
+                await self._reply_with_branding(
+                    message,
+                    "**Usage:** `/seek <seconds>`\n\n**Example:** `/seek 60`",
+                    include_footer=False,
+                )
                 return
 
             seconds = int(parts[1])
             result = await self.music_manager.seek(message.chat_id, seconds)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except ValueError:
-            await message.reply("❌ Invalid number! Use: `/seek <seconds>`")
+            await self._reply_with_branding(
+                message,
+                "❌ Invalid number! Use: `/seek <seconds>`",
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Seek error: {e}")
-            await message.reply(f"❌ Seek failed: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"❌ Seek failed: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_volume_command(self, message, parts):
         """Handle /volume command"""
         if not self.music_manager:
-            await message.reply("❌ Music system not initialized")
+            await self._reply_with_branding(
+                message,
+                "❌ Music system not initialized",
+                include_footer=False,
+            )
             return
 
         try:
             if len(parts) < 2:
-                await message.reply("**Usage:** `/volume <0-200>`\n\n**Example:** `/volume 100`")
+                await self._reply_with_branding(
+                    message,
+                    "**Usage:** `/volume <0-200>`\n\n**Example:** `/volume 100`",
+                    include_footer=False,
+                )
                 return
 
             volume = int(parts[1])
             if not 0 <= volume <= 200:
-                await message.reply("❌ Volume must be between 0-200!")
+                await self._reply_with_branding(
+                    message,
+                    "❌ Volume must be between 0-200!",
+                    include_footer=False,
+                )
                 return
 
             result = await self.music_manager.set_volume(message.chat_id, volume)
-            await message.reply(result)
+            await self._reply_with_branding(
+                message,
+                result,
+                include_footer=False,
+            )
         except ValueError:
-            await message.reply("Invalid number! Use: `/volume <0-200>`")
+            await self._reply_with_branding(
+                message,
+                "Invalid number! Use: `/volume <0-200>`",
+                include_footer=False,
+            )
         except Exception as e:
             logger.error(f"Volume error: {e}")
-            await message.reply(f"Volume error: {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"Volume error: {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_promote_command(self, message, parts):
         """Handle /pm (promote) command - promote user to admin"""
         if not message.is_group and not message.is_channel:
-            await message.reply("**Promote command only works in groups!**")
+            await self._reply_with_branding(
+                message,
+                "**Promote command only works in groups!**",
+                include_footer=False,
+            )
             return
 
         try:
@@ -2038,7 +2259,11 @@ Contact @VZLfxs for support & inquiries
                         entity = await self.client.get_entity(target)
                         target_user_id = entity.id
                     except Exception as e:
-                        await message.reply(f"**Error:** Could not find user {target}")
+                        await self._reply_with_branding(
+                            message,
+                            f"**Error:** Could not find user {target}",
+                            include_footer=False,
+                        )
                         return
 
                 # Handle user ID
@@ -2050,12 +2275,17 @@ Contact @VZLfxs for support & inquiries
                     title = ' '.join(parts[2:])
 
             if not target_user_id:
-                await message.reply(
+                usage_text = (
                     "**Usage:** `/pm @username [title]` or `/pm <user_id> [title]` or reply to message\n\n"
                     "**Examples:**\n"
                     "• `/pm @user Admin`\n"
                     "• `/pm @user`\n"
                     "• Reply to user message with `/pm Moderator`"
+                )
+                await self._reply_with_branding(
+                    message,
+                    usage_text,
+                    include_footer=False,
                 )
                 return
 
@@ -2092,21 +2322,34 @@ Contact @VZLfxs for support & inquiries
                 username = f"User {target_user_id}"
                 name = "User"
 
-            await message.reply(
+            success_text = (
                 f"**User Promoted**\n\n"
                 f"**User:** {name} ({username})\n"
                 f"**Title:** {title}\n\n"
-                f"User is now an admin with full permissions."
+                "User is now an admin with full permissions."
+            )
+            await self._reply_with_branding(
+                message,
+                success_text,
+                include_footer=False,
             )
 
         except Exception as e:
             logger.error(f"Error in promote command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}\n\nMake sure bot has admin rights to promote users.")
+            await self._reply_with_branding(
+                message,
+                f"**Error:** {str(e)}\n\nMake sure bot has admin rights to promote users.",
+                include_footer=False,
+            )
 
     async def _handle_demote_command(self, message, parts):
         """Handle /dm (demote) command - demote user from admin"""
         if not message.is_group and not message.is_channel:
-            await message.reply("**Demote command only works in groups!**")
+            await self._reply_with_branding(
+                message,
+                "**Demote command only works in groups!**",
+                include_footer=False,
+            )
             return
 
         try:
@@ -2129,22 +2372,31 @@ Contact @VZLfxs for support & inquiries
                         entity = await self.client.get_entity(target)
                         target_user_id = entity.id
                     except Exception as e:
-                        await message.reply(f"**Error:** Could not find user {target}")
+                        await self._reply_with_branding(
+                            message,
+                            f"**Error:** Could not find user {target}",
+                            include_footer=False,
+                        )
                         return
 
                 # Handle user ID
                 elif target.isdigit():
                     target_user_id = int(target)
 
-            if not target_user_id:
-                await message.reply(
-                    "**Usage:** `/dm @username` or `/dm <user_id>` or reply to message\n\n"
-                    "**Examples:**\n"
-                    "• `/dm @user`\n"
-                    "• `/dm 123456789`\n"
-                    "• Reply to admin message with `/dm`"
-                )
-                return
+        if not target_user_id:
+            usage_text = (
+                "**Usage:** `/dm @username` or `/dm <user_id>` or reply to message\n\n"
+                "**Examples:**\n"
+                "• `/dm @user`\n"
+                "• `/dm 123456789`\n"
+                "• Reply to admin message with `/dm`"
+            )
+            await self._reply_with_branding(
+                message,
+                usage_text,
+                include_footer=False,
+            )
+            return
 
             # Demote user (remove admin rights)
             from telethon.tl.functions.channels import EditAdminRequest
@@ -2180,15 +2432,24 @@ Contact @VZLfxs for support & inquiries
                 username = f"User {target_user_id}"
                 name = "User"
 
-            await message.reply(
+            success_text = (
                 f"**User Demoted**\n\n"
                 f"**User:** {name} ({username})\n\n"
-                f"User is no longer an admin."
+                "User is no longer an admin."
+            )
+            await self._reply_with_branding(
+                message,
+                success_text,
+                include_footer=False,
             )
 
         except Exception as e:
             logger.error(f"Error in demote command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}\n\nMake sure bot has admin rights to demote users.")
+            await self._reply_with_branding(
+                message,
+                f"**Error:** {str(e)}\n\nMake sure bot has admin rights to demote users.",
+                include_footer=False,
+            )
 
     async def _ensure_group_admin_sync(self, chat_id: int, *, force: bool = False) -> None:
         """Refresh stored admin list for a chat when the cache expires."""
@@ -2274,21 +2535,34 @@ Contact @VZLfxs for support & inquiries
         """Handle /adminlist command - show tracked admins for this group."""
 
         if not message.is_group and not message.is_channel:
-            await message.reply("**Perintah ini hanya tersedia di grup.**")
+            await self._reply_with_branding(
+                message,
+                "**Perintah ini hanya tersedia di grup.**",
+                include_footer=False,
+            )
             return
 
         chat_id = message.chat_id
         if chat_id is None:
-            await message.reply("Tidak dapat menentukan grup saat ini.")
+            await self._reply_with_branding(
+                message,
+                "Tidak dapat menentukan grup saat ini.",
+                include_footer=False,
+            )
             return
 
         await self._ensure_group_admin_sync(chat_id, force=True)
 
         admin_ids = self.database.get_group_admins(chat_id)
         if not admin_ids:
-            await message.reply(
+            warning_text = (
                 "⚠️ **Belum ada admin yang tercatat untuk grup ini.**\n"
                 "Gunakan perintah admin sekali agar bot dapat menyinkronkan daftar."
+            )
+            await self._reply_with_branding(
+                message,
+                warning_text,
+                include_footer=False,
             )
             return
 
@@ -2307,28 +2581,53 @@ Contact @VZLfxs for support & inquiries
                 admin_lines.append(f"{index}. `User {user_id}`")
 
         header = "**Daftar Admin Grup**"
-        await message.reply(f"{header}\n\n" + "\n".join(admin_lines))
+        admin_text = f"{header}\n\n" + "\n".join(admin_lines)
+        await self._reply_with_branding(
+            message,
+            admin_text,
+            include_footer=False,
+        )
 
     async def _handle_add_permission_command(self, message, parts):
         """Handle +add command - stub"""
-        await message.reply("🚧 **Add permission under development**\n\nComing soon!")
+        await self._reply_with_branding(
+            message,
+            "🚧 **Add permission under development**\n\nComing soon!",
+            include_footer=False,
+        )
 
     async def _handle_del_permission_command(self, message, parts):
         """Handle +del command - stub"""
-        await message.reply("🚧 **Del permission under development**\n\nComing soon!")
+        await self._reply_with_branding(
+            message,
+            "🚧 **Del permission under development**\n\nComing soon!",
+            include_footer=False,
+        )
 
     async def _handle_setwelcome_command(self, message, parts):
         """Handle +setwelcome command - stub"""
-        await message.reply("🚧 **Set welcome under development**\n\nComing soon!")
+        await self._reply_with_branding(
+            message,
+            "🚧 **Set welcome under development**\n\nComing soon!",
+            include_footer=False,
+        )
 
     async def _handle_backup_command(self, message, parts):
         """Handle +backup command - stub"""
-        await message.reply("🚧 **Backup command under development**\n\nComing soon!")
+        await self._reply_with_branding(
+            message,
+            "🚧 **Backup command under development**\n\nComing soon!",
+            include_footer=False,
+        )
 
     async def _handle_lock_command(self, message, parts):
         """Handle /lock command - lock user with auto-delete"""
         if not message.is_group and not message.is_channel:
-            await message.reply("**Lock command only works in groups!**")
+            await self._reply_with_branding(
+                message,
+                "**Lock command only works in groups!**",
+                include_footer=False,
+            )
             return
 
         try:
@@ -2346,21 +2645,30 @@ Contact @VZLfxs for support & inquiries
             if not target_user_id:
                 target_user_id = await self.lock_manager.parse_lock_command(self.client, message)
 
-            if not target_user_id:
-                await message.reply(
-                    "**Usage:** `/lock @username` or `/lock <user_id>` or reply to user's message\n\n"
-                    "**Examples:**\n"
-                    "• `/lock @spammer`\n"
-                    "• `/lock 123456789`\n"
-                    "• Reply to user message with `/lock`"
-                )
-                return
+        if not target_user_id:
+            usage_text = (
+                "**Usage:** `/lock @username` or `/lock <user_id>` or reply to user's message\n\n"
+                "**Examples:**\n"
+                "• `/lock @spammer`\n"
+                "• `/lock 123456789`\n"
+                "• Reply to user message with `/lock`"
+            )
+            await self._reply_with_branding(
+                message,
+                usage_text,
+                include_footer=False,
+            )
+            return
 
             # Prevent locking bot developers/owners
             if self.auth_manager.is_developer(target_user_id) or self.auth_manager.is_owner(target_user_id):
                 issuer_id = getattr(message, 'sender_id', None)
                 if not issuer_id:
-                    await message.reply("**Error:** You cannot lock bot developers or owners.")
+                    await self._reply_with_branding(
+                        message,
+                        "**Error:** You cannot lock bot developers or owners.",
+                        include_footer=False,
+                    )
                     return
 
                 protected_role = "developer" if self.auth_manager.is_developer(target_user_id) else "owner"
@@ -2397,16 +2705,27 @@ Contact @VZLfxs for support & inquiries
                     except Exception:
                         issuer_label = f"User {issuer_id}"
 
-                    await message.reply(
+                    protected_text = (
                         "**Protected Account Attempt**\n\n"
                         f"{issuer_label} tried to lock a protected {protected_role} and has been locked instead.\n"
                         "Only bot developers can unlock this restriction."
                     )
-                else:
-                    await message.reply(
-                        "**Error:** Protected account detected but failed to apply the automatic lock."
+                    await self._reply_with_branding(
+                        message,
+                        protected_text,
+                        include_footer=False,
                     )
-                await message.reply("**Error:** You cannot lock bot developers or owners.")
+                else:
+                    await self._reply_with_branding(
+                        message,
+                        "**Error:** Protected account detected but failed to apply the automatic lock.",
+                        include_footer=False,
+                    )
+                await self._reply_with_branding(
+                    message,
+                    "**Error:** You cannot lock bot developers or owners.",
+                    include_footer=False,
+                )
                 return
 
             # Get reason if provided
@@ -2426,23 +2745,40 @@ Contact @VZLfxs for support & inquiries
                 except:
                     username = f"User {target_user_id}"
 
-                await message.reply(
+                success_text = (
                     f"**User Locked**\n\n"
                     f"**User:** {username}\n"
                     f"**Reason:** {reason}\n\n"
-                    f"All messages from this user will be auto-deleted."
+                    "All messages from this user will be auto-deleted."
+                )
+                await self._reply_with_branding(
+                    message,
+                    success_text,
+                    include_footer=False,
                 )
             else:
-                await message.reply("**Error:** Failed to lock user. Database error.")
+                await self._reply_with_branding(
+                    message,
+                    "**Error:** Failed to lock user. Database error.",
+                    include_footer=False,
+                )
 
         except Exception as e:
             logger.error(f"Error in lock command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"**Error:** {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_unlock_command(self, message, parts):
         """Handle /unlock command - unlock user"""
         if not message.is_group and not message.is_channel:
-            await message.reply("**Unlock command only works in groups!**")
+            await self._reply_with_branding(
+                message,
+                "**Unlock command only works in groups!**",
+                include_footer=False,
+            )
             return
 
         try:
@@ -2460,23 +2796,30 @@ Contact @VZLfxs for support & inquiries
             if not target_user_id:
                 target_user_id = await self.lock_manager.parse_lock_command(self.client, message)
 
-            if not target_user_id:
-                await message.reply(
-                    "**Usage:** `/unlock @username` or `/unlock <user_id>` or reply to user's message\n\n"
-                    "**Examples:**\n"
-                    "• `/unlock @user`\n"
-                    "• `/unlock 123456789`\n"
-                    "• Reply to user message with `/unlock`"
-                )
-                return
+        if not target_user_id:
+            usage_text = (
+                "**Usage:** `/unlock @username` or `/unlock <user_id>` or reply to user's message\n\n"
+                "**Examples:**\n"
+                "• `/unlock @user`\n"
+                "• `/unlock 123456789`\n"
+                "• Reply to user message with `/unlock`"
+            )
+            await self._reply_with_branding(
+                message,
+                usage_text,
+                include_footer=False,
+            )
+            return
 
             # Unlock the user
             metadata = self.lock_manager.get_lock_metadata(message.chat_id, target_user_id)
             if metadata.get('requires_developer'):
                 issuer_id = getattr(message, 'sender_id', None)
                 if not issuer_id or not self.auth_manager.is_developer(issuer_id):
-                    await message.reply(
-                        "**Error:** Only bot developers can unlock this user after they attempted to lock a protected account."
+                    await self._reply_with_branding(
+                        message,
+                        "**Error:** Only bot developers can unlock this user after they attempted to lock a protected account.",
+                        include_footer=False,
                     )
                     return
 
@@ -2489,29 +2832,50 @@ Contact @VZLfxs for support & inquiries
                 except:
                     username = f"User {target_user_id}"
 
-                await message.reply(
+                success_text = (
                     f"**User Unlocked**\n\n"
                     f"**User:** {username}\n\n"
-                    f"User can now send messages normally."
+                    "User can now send messages normally."
+                )
+                await self._reply_with_branding(
+                    message,
+                    success_text,
+                    include_footer=False,
                 )
             else:
-                await message.reply("**Error:** Failed to unlock user or user is not locked.")
+                await self._reply_with_branding(
+                    message,
+                    "**Error:** Failed to unlock user or user is not locked.",
+                    include_footer=False,
+                )
 
         except Exception as e:
             logger.error(f"Error in unlock command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"**Error:** {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_locklist_command(self, message):
         """Handle /locklist command - show locked users"""
         if not message.is_group and not message.is_channel:
-            await message.reply("**Lock list only works in groups!**")
+            await self._reply_with_branding(
+                message,
+                "**Lock list only works in groups!**",
+                include_footer=False,
+            )
             return
 
         try:
             locked_users = self.lock_manager.get_locked_users(message.chat_id)
 
             if not locked_users:
-                await message.reply("**No locked users in this chat.**")
+                await self._reply_with_branding(
+                    message,
+                    "**No locked users in this chat.**",
+                    include_footer=False,
+                )
                 return
 
             response = "**Locked Users in This Chat**\n\n"
@@ -2530,11 +2894,19 @@ Contact @VZLfxs for support & inquiries
 
             response += f"**Total:** {len(locked_users)} user(s) locked"
 
-            await message.reply(response)
+            await self._reply_with_branding(
+                message,
+                response,
+                include_footer=False,
+            )
 
         except Exception as e:
             logger.error(f"Error in locklist command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"**Error:** {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_tag_command(self, message):
         """Handle perintah tag massal dengan dukungan batch dinamis."""
@@ -2634,11 +3006,19 @@ Contact @VZLfxs for support & inquiries
     async def _handle_dot_tag_command(self, message):
         """Handle developer-prefix tag command (e.g. .t) for admins."""
         if not config.ENABLE_TAG_SYSTEM:
-            await message.reply("**Tag system is currently disabled.**")
+            await self._reply_with_branding(
+                message,
+                "**Tag system is currently disabled.**",
+                include_footer=False,
+            )
             return
 
         if not message.is_group and not message.is_channel:
-            await message.reply("**Tag all only works in groups!**")
+            await self._reply_with_branding(
+                message,
+                "**Tag all only works in groups!**",
+                include_footer=False,
+            )
             return
 
         try:
@@ -2714,7 +3094,11 @@ Contact @VZLfxs for support & inquiries
 
         except Exception as e:
             logger.error(f"Error in dot tag command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            await self._reply_with_branding(
+                message,
+                f"**Error:** {str(e)}",
+                include_footer=False,
+            )
 
     async def _handle_tag_cancel_command(self, message):
         """Handle perintah pembatalan tag massal."""
