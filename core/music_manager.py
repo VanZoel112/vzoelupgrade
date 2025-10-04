@@ -169,13 +169,16 @@ class MusicManager:
             configured_quality = getattr(config, "AUDIO_QUALITY", None)
             if not configured_quality or configured_quality == "bestaudio[ext=m4a]/bestaudio":
                 configured_quality = "bestaudio/best"
+            bitrate = str(getattr(config, "DOWNLOAD_AUDIO_BITRATE", "320"))
+            if not bitrate.isdigit():
+                bitrate = "320"
             ydl_opts.update({
                 "format": configured_quality,
                 "postprocessors": [
                     {
                         "key": "FFmpegExtractAudio",
                         "preferredcodec": "mp3",
-                        "preferredquality": "320",
+                        "preferredquality": bitrate,
                     }
                 ],
             })
@@ -381,6 +384,47 @@ class MusicManager:
         except Exception as exc:
             logger.warning(f"Failed to build GroupCallConfig for chat {chat_id}: {exc}")
             return GroupCallConfig()
+
+    def _resolve_audio_quality(self):
+        """Resolve preferred audio quality for streaming."""
+        if not AudioQuality:
+            return None
+
+        preferred = str(getattr(config, "STREAM_AUDIO_QUALITY", "HIGH") or "HIGH").strip().lower()
+        mapping = {
+            "studio": AudioQuality.STUDIO,
+            "high": AudioQuality.HIGH,
+            "medium": AudioQuality.MEDIUM,
+            "low": AudioQuality.LOW,
+            "8k": AudioQuality.STUDIO,
+            "8000": AudioQuality.STUDIO,
+            "96k": AudioQuality.STUDIO,
+            "96khz": AudioQuality.STUDIO,
+            "48k": AudioQuality.HIGH,
+            "48khz": AudioQuality.HIGH,
+            "36k": AudioQuality.MEDIUM,
+            "36khz": AudioQuality.MEDIUM,
+            "24k": AudioQuality.LOW,
+            "24khz": AudioQuality.LOW,
+        }
+
+        if preferred in mapping:
+            return mapping[preferred]
+
+        # Default to studio quality when requesting very high bitrates
+        if preferred.endswith("k"):
+            try:
+                value = int(preferred[:-1])
+                if value >= 80:
+                    return AudioQuality.STUDIO
+                if value >= 40:
+                    return AudioQuality.HIGH
+                if value >= 30:
+                    return AudioQuality.MEDIUM
+            except ValueError:
+                pass
+
+        return AudioQuality.HIGH
 
     async def _get_join_as_entity(self):
         """Resolve join_as entity once and cache it."""
@@ -637,11 +681,13 @@ class MusicManager:
 
         ytdlp_parameters = ' '.join(ytdlp_params) if ytdlp_params else None
 
+        audio_quality = self._resolve_audio_quality()
         media_stream_kwargs = {
             'media_path': youtube_url,
-            'audio_parameters': AudioQuality.HIGH,
             'ytdlp_parameters': ytdlp_parameters
         }
+        if audio_quality is not None:
+            media_stream_kwargs['audio_parameters'] = audio_quality
 
         if song_entry.get('audio_only', True):
             media_stream_kwargs['video_flags'] = MediaStream.Flags.IGNORE
