@@ -103,6 +103,8 @@ class VBot:
         self._tag_prefixes = (".", "/", "+")
         self._tag_start_commands = {f"{prefix}t" for prefix in self._tag_prefixes}
         self._tag_stop_commands = {f"{prefix}c" for prefix in self._tag_prefixes}
+        prefix_dev = getattr(config, "PREFIX_DEV", ".") or "."
+        self._dot_tag_command = (prefix_dev + "t").lower()
         self._help_pages = self._build_help_pages()
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
         self._admin_sync_cache: Dict[int, float] = {}
@@ -112,11 +114,6 @@ class VBot:
         self._premium_wrapper_id_limit = 4096
         self._assistant_joined_chats: Set[int] = set()
         self._assistant_join_failed_chats: Set[int] = set()
-        self._tag_prefixes = (".", "/", "+")
-        self._tag_start_commands = {f"{prefix}t" for prefix in self._tag_prefixes}
-        self._tag_stop_commands = {f"{prefix}c" for prefix in self._tag_prefixes}
-        prefix_dev = getattr(config, "PREFIX_DEV", ".") or "."
-        self._dot_tag_command = (prefix_dev + "t").lower()
 
     async def initialize(self):
         """Initialize VBot"""
