@@ -1745,13 +1745,7 @@ Contact @VZLfxs for support & inquiries
                 candidate_value = self._coerce_music_logo_path(candidate_value)
                 resolved_candidates = self._resolve_music_logo_local_candidates(
                     candidate_value
-                normalized_value = self._coerce_music_logo_path(
-                    logo_path_value[7:]
-                    if lowered_path_value.startswith("file://")
-            if logo_path_value.startswith(("http://", "https://")):
-                if await _send_fallback(logo_path_value):
-                    return True
-            else:
+                )
                 normalized_value = (
                     logo_path_value[7:]
                     if logo_path_value.startswith("file://")
@@ -1777,41 +1771,6 @@ Contact @VZLfxs for support & inquiries
                         logo_path_value,
                         ", ".join(str(path) for path in resolved_candidates),
                     )
-                path_candidates = []
-                if logo_path:
-                    path_candidates.append(logo_path)
-
-                if logo_path and not logo_path.is_absolute():
-                    project_root = Path(__file__).resolve().parent
-                    path_candidates.append(project_root / logo_path_value)
-
-                resolved_candidates = []
-                for candidate in path_candidates:
-                    try:
-                        resolved_candidate = candidate.expanduser().resolve(strict=False)
-                    except OSError:
-                        continue
-
-                    resolved_candidates.append(resolved_candidate)
-                    if resolved_candidate.is_file():
-                        if await _send_fallback(str(resolved_candidate)):
-                            return True
-
-                if not resolved_candidates or not any(
-                    candidate.is_file() for candidate in resolved_candidates
-                ):
-                    logger.error(
-                        "Configured music logo fallback path '%s' does not exist",
-                        logo_path_value,
-                    )
-            elif logo_path and logo_path.is_file():
-                if await _send_fallback(str(logo_path)):
-                    return True
-            else:
-                logger.error(
-                    "Configured music logo fallback path '%s' does not exist",
-                    logo_path_value,
-                )
 
         return False
 
