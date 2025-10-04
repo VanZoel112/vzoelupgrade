@@ -36,12 +36,19 @@ logger = logging.getLogger(__name__)
 import config
 
 # Import Telethon
-from telethon import TelegramClient, events, Button, types
+from telethon import TelegramClient, events, Button, types, functions
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageEntityMentionName
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.utils import pack_bot_file_id
+from telethon.errors import (
+    ChatAdminRequiredError,
+    UserAlreadyParticipantError,
+    UserPrivacyRestrictedError,
+    UserNotMutualContactError,
+    UserNotParticipantError,
+)
 
 # Import VBot modules
 from core.auth_manager import AuthManager
@@ -71,6 +78,7 @@ class VBot:
     def __init__(self):
         self.client = None
         self.assistant_client = None  # Assistant for voice chat streaming
+        self.assistant_user = None
         self.music_manager = None  # Will be initialized after client
 
         # Initialize database (core persistence layer)
@@ -92,6 +100,9 @@ class VBot:
             enabled_plugins=getattr(config, "ENABLED_PLUGINS", None),
             disabled_plugins=getattr(config, "DISABLED_PLUGINS", None),
         )
+        self._tag_prefixes = (".", "/", "+")
+        self._tag_start_commands = {f"{prefix}t" for prefix in self._tag_prefixes}
+        self._tag_stop_commands = {f"{prefix}c" for prefix in self._tag_prefixes}
         self._help_pages = self._build_help_pages()
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
         self._admin_sync_cache: Dict[int, float] = {}
@@ -99,6 +110,8 @@ class VBot:
         self._premium_wrapper_ids: Set[int] = set()
         self._premium_wrapper_id_queue: Deque[int] = deque()
         self._premium_wrapper_id_limit = 4096
+        self._assistant_joined_chats: Set[int] = set()
+        self._assistant_join_failed_chats: Set[int] = set()
 
     async def initialize(self):
         """Initialize VBot"""
@@ -146,9 +159,18 @@ class VBot:
                         config.API_HASH
                     )
                     await self.assistant_client.start()
+                    try:
+                        self.assistant_user = await self.assistant_client.get_me()
+                    except Exception as assistant_info_error:
+                        logger.warning(
+                            "Tidak bisa mengambil informasi akun asisten: %s",
+                            assistant_info_error,
+                        )
+                        self.assistant_user = None
                 except Exception as exc:
                     logger.error(f"Failed to initialize assistant client: {exc}")
                     self.assistant_client = None
+                    self.assistant_user = None
 
             # Initialize Music Manager
             self.music_manager = MusicManager(self.client, self.assistant_client)
@@ -203,8 +225,8 @@ class VBot:
                 # Admin commands
                 BotCommand(command="pm", description="Promote user to admin"),
                 BotCommand(command="dm", description="Demote user from admin"),
-                BotCommand(command="tagall", description="Tag all members"),
-                BotCommand(command="cancel", description="Cancel tag operation"),
+                BotCommand(command="t", description="Tag semua anggota secara bertahap"),
+                BotCommand(command="c", description="Hentikan proses tag massal"),
                 BotCommand(command="lock", description="Lock user (auto-delete)"),
                 BotCommand(command="unlock", description="Unlock user"),
                 BotCommand(command="locklist", description="Show locked users"),
@@ -706,10 +728,13 @@ class VBot:
                 await self._handle_locklist_command(message)
 
             # Tag system
-            elif command == '/tagall':
-                await self._handle_tagall_command(message, parts)
-            elif command == '/cancel':
-                await self._handle_cancel_command(message)
+            elif command in self._tag_start_commands:
+                await self._handle_tag_command(message)
+            elif command in self._tag_stop_commands:
+                await self._handle_tag_cancel_command(message)
+            elif command == '/cancel' and not (message.is_group or message.is_channel):
+                # Biarkan generator session dan alur lainnya menangani /cancel di private chat
+                return
 
             # Help command (available to all)
             elif command in ['/help', '#help']:
@@ -891,6 +916,9 @@ By Vzoel Fox's
     def _build_help_pages(self) -> List[Dict[str, object]]:
         """Define help sections for slash commands."""
 
+        tag_start_display = " / ".join(f"`{prefix}t`" for prefix in self._tag_prefixes)
+        tag_stop_display = " / ".join(f"`{prefix}c`" for prefix in self._tag_prefixes)
+
         return [
             {
                 "label": "Music",
@@ -919,8 +947,8 @@ By Vzoel Fox's
                     ("`/lock @user`", "Kunci pengguna agar pesannya dihapus otomatis"),
                     ("`/unlock @user`", "Buka kunci pengguna"),
                     ("`/locklist`", "Daftar pengguna yang terkunci"),
-                    ("`/tagall <text>`", "Mention semua anggota"),
-                    ("`/cancel`", "Batalkan penandaan massal"),
+                    (f"{tag_start_display} [batch] <text>", "Mention semua anggota via edit batch"),
+                    (f"{tag_stop_display}", "Batalkan penandaan massal"),
                 ],
             },
             {
@@ -958,7 +986,7 @@ By Vzoel Fox's
 
         toggle_row: List[Button] = []
         for idx, section in enumerate(self._help_pages):
-            label_prefix = "✅ " if idx == current_index else ""
+            label_prefix = "Aktif | " if idx == current_index else ""
             toggle_row.append(
                 Button.inline(
                     f"{label_prefix}{section['label']}",
@@ -967,9 +995,9 @@ By Vzoel Fox's
             )
 
         navigation_row = [
-            Button.inline("⬅️ Back", f"help:page:{(current_index - 1) % total_pages}".encode()),
+            Button.inline("Sebelumnya", f"help:page:{(current_index - 1) % total_pages}".encode()),
             Button.url("FOUNDER", "https://t.me/VZLfxs"),
-            Button.inline("Next ➡️", f"help:page:{(current_index + 1) % total_pages}".encode()),
+            Button.inline("Berikutnya", f"help:page:{(current_index + 1) % total_pages}".encode()),
         ]
 
         return text, [toggle_row, navigation_row]
@@ -1489,6 +1517,173 @@ Contact @VZLfxs for support & inquiries
 
         return "\n".join(lines)
 
+    async def _notify_assistant_join_failure(self, message, chat_id: int, text: str) -> None:
+        """Inform chat once when the assistant user cannot be invited automatically."""
+
+        if chat_id in self._assistant_join_failed_chats:
+            return
+
+        try:
+            await message.reply(VBotBranding.wrap_message(text, include_footer=False))
+        except Exception as notify_error:
+            logger.debug("Tidak bisa mengirim notifikasi kegagalan asisten: %s", notify_error)
+
+        self._assistant_join_failed_chats.add(chat_id)
+
+    async def _ensure_assistant_joined(self, message) -> bool:
+        """Ensure the assistant account is present in the chat before streaming."""
+
+        if not (message.is_group or message.is_channel):
+            return True
+
+        if not self.assistant_client or not self.assistant_user:
+            return True
+
+        chat_id = getattr(message, "chat_id", None)
+        if not chat_id:
+            return True
+
+        if chat_id in self._assistant_joined_chats:
+            return True
+
+        assistant_id = getattr(self.assistant_user, "id", None)
+        if assistant_id is None:
+            return True
+
+        assistant_handle = (
+            f"@{self.assistant_user.username}"
+            if getattr(self.assistant_user, "username", None)
+            else f"ID {assistant_id}"
+        )
+        failure_message = (
+            f"Akun asisten {assistant_handle} tidak dapat ditambahkan otomatis. "
+            "Mohon tambahkan secara manual agar streaming musik Vzoel Fox's (Lutpan) dapat berjalan."
+        )
+
+        try:
+            chat_entity = await self.client.get_entity(chat_id)
+        except Exception as entity_error:
+            logger.warning(
+                "Gagal mengambil entitas grup %s untuk memastikan asisten bergabung: %s",
+                chat_id,
+                entity_error,
+            )
+            return True
+
+        resolved_id = getattr(chat_entity, "id", chat_id)
+
+        if isinstance(chat_entity, types.Channel):
+            try:
+                await self.client(
+                    functions.channels.GetParticipantRequest(chat_entity, assistant_id)
+                )
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except UserNotParticipantError:
+                pass
+            except Exception as participant_error:
+                logger.debug(
+                    "Tidak bisa memeriksa status partisipasi asisten di %s: %s",
+                    chat_id,
+                    participant_error,
+                )
+
+            try:
+                await self.client(
+                    functions.channels.InviteToChannelRequest(
+                        chat_entity,
+                        [self.assistant_user]
+                    )
+                )
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except UserAlreadyParticipantError:
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except (ChatAdminRequiredError, UserPrivacyRestrictedError) as channel_error:
+                logger.debug(
+                    "Tidak bisa menambahkan asisten ke supergroup %s: %s",
+                    chat_id,
+                    channel_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+            except Exception as invite_error:
+                logger.error(
+                    "Gagal mengundang akun asisten ke supergroup %s: %s",
+                    chat_id,
+                    invite_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+
+        elif isinstance(chat_entity, types.Chat):
+            try:
+                full_chat = await self.client(
+                    functions.messages.GetFullChatRequest(chat_entity.id)
+                )
+                participants = getattr(
+                    getattr(full_chat.full_chat, "participants", None),
+                    "participants",
+                    [],
+                )
+                for participant in participants:
+                    if getattr(participant, "user_id", None) == assistant_id:
+                        self._assistant_joined_chats.add(resolved_id)
+                        self._assistant_join_failed_chats.discard(resolved_id)
+                        return True
+            except Exception as check_error:
+                logger.debug(
+                    "Tidak bisa memastikan partisipan asisten pada chat %s: %s",
+                    chat_id,
+                    check_error,
+                )
+
+            try:
+                await self.client(
+                    functions.messages.AddChatUserRequest(
+                        chat_entity.id,
+                        self.assistant_user,
+                        fwd_limit=0,
+                    )
+                )
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except UserAlreadyParticipantError:
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except (
+                ChatAdminRequiredError,
+                UserPrivacyRestrictedError,
+                UserNotMutualContactError,
+            ) as chat_error:
+                logger.debug(
+                    "Tidak bisa menambahkan asisten ke chat %s: %s",
+                    chat_id,
+                    chat_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+            except Exception as add_error:
+                logger.error(
+                    "Gagal menambahkan akun asisten ke chat %s: %s",
+                    chat_id,
+                    add_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+
+        else:
+            self._assistant_joined_chats.add(resolved_id)
+            self._assistant_join_failed_chats.discard(resolved_id)
+
+        return True
+
     async def _handle_music_command(self, message, parts, audio_only=True):
         """Handle music download/stream commands"""
         if not config.MUSIC_ENABLED:
@@ -1511,6 +1706,9 @@ Contact @VZLfxs for support & inquiries
                 return
 
             query = ' '.join(parts[1:])
+
+            if not await self._ensure_assistant_joined(message):
+                return
 
             # Show animated processing message
             media_type = "audio" if audio_only else "video"
@@ -2327,66 +2525,130 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Error in locklist command: {e}", exc_info=True)
             await message.reply(f"**Error:** {str(e)}")
 
-    async def _handle_tagall_command(self, message, parts):
-        """Handle /tagall command - tag all members"""
+    async def _handle_tag_command(self, message):
+        """Handle perintah tag massal dengan dukungan batch dinamis."""
+        if not config.ENABLE_TAG_SYSTEM:
+            await message.reply(
+                VBotBranding.format_error("Sistem tag sedang dinonaktifkan oleh Vzoel Fox's (Lutpan).")
+            )
+            return
+
         if not message.is_group and not message.is_channel:
-            await message.reply("**Tag all only works in groups!**")
+            await message.reply(
+                VBotBranding.format_error("Perintah tag massal hanya tersedia di grup atau kanal.")
+            )
             return
 
         try:
-            # Get custom message if provided
-            custom_message = "Tagging all members..."
-            if len(parts) > 1:
-                custom_message = ' '.join(parts[1:])
+            reply_message = None
+            if getattr(message, "is_reply", False):
+                try:
+                    reply_message = await message.get_reply_message()
+                except Exception as fetch_error:
+                    logger.debug("Failed to fetch replied message: %s", fetch_error)
 
-            # Start tag all process
+            raw_text = message.raw_text or message.text or ""
+            remainder = ""
+            if raw_text:
+                parts = raw_text.split(maxsplit=1)
+                if len(parts) > 1:
+                    remainder = parts[1].strip()
+
+            provided_batch: Optional[int] = None
+            custom_message = remainder
+
+            if remainder:
+                first_split = remainder.split(maxsplit=1)
+                candidate = first_split[0]
+                rest_text = first_split[1] if len(first_split) > 1 else ""
+                if candidate.isdigit():
+                    provided_batch = int(candidate)
+                    custom_message = rest_text.strip()
+                else:
+                    custom_message = remainder
+
+            if not custom_message and reply_message:
+                reply_text = getattr(reply_message, "raw_text", None) or getattr(reply_message, "message", "")
+                custom_message = reply_text.strip()
+
+            if not custom_message:
+                custom_message = "Sedang menandai seluruh anggota..."
+
+            custom_message = (
+                f"{custom_message}\n\n_Disajikan oleh Vzoel Fox's (Lutpan)_"
+            )
+
+            reply_to_msg_id = getattr(message, "reply_to_msg_id", None)
+
             success = await self.tag_manager.start_tag_all(
                 self.client,
                 message.chat_id,
                 custom_message,
-                message.sender_id
+                message.sender_id,
+                batch_size=provided_batch,
+                reply_to_msg_id=reply_to_msg_id,
             )
 
             if success:
-                await message.reply(
-                    f"**Tag All Started**\n\n"
-                    f"**Message:** {custom_message}\n\n"
-                    f"Tagging all members... Use `/cancel` to stop."
+                confirm_text = (
+                    "**Tag Massal Dimulai**\n\n"
+                    f"**Pesan:** {custom_message}\n\n"
+                    "Bot akan menandai seluruh anggota secara bertahap. Gunakan `.c`/`/c`/`+c` untuk menghentikan."
                 )
-            else:
-                # Check if already tagging
+                await message.reply(
+                    VBotBranding.wrap_message(confirm_text, include_footer=False)
+                )
+                return
+
+            if not success:
                 if message.chat_id in self.tag_manager.active_tags:
                     await message.reply(
-                        "**Tag all already in progress!**\n\n"
-                        "Wait for current process to finish or use `/cancel` to stop it."
+                        VBotBranding.format_error(
+                            "Proses tag massal sedang berlangsung. Tunggu hingga selesai atau gunakan `.c`/`/c`/`+c`."
+                        )
                     )
                 else:
-                    await message.reply("**Error:** Could not start tag all. No members found or insufficient permissions.")
+                    await message.reply(
+                        VBotBranding.format_error(
+                            "Tag massal gagal dimulai. Periksa anggota dan izin bot."
+                        )
+                    )
 
         except Exception as e:
-            logger.error(f"Error in tagall command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            logger.error(f"Error in tag command: {e}", exc_info=True)
+            await message.reply(
+                VBotBranding.format_error(f"Galat sistem: {str(e)}")
+            )
 
-    async def _handle_cancel_command(self, message):
-        """Handle /cancel command - cancel ongoing tag all"""
+    async def _handle_tag_cancel_command(self, message):
+        """Handle perintah pembatalan tag massal."""
         if not message.is_group and not message.is_channel:
-            await message.reply("**Cancel only works in groups!**")
+            await message.reply(
+                VBotBranding.format_error("Perintah pembatalan hanya tersedia di grup atau kanal.")
+            )
             return
 
         try:
             success = await self.tag_manager.cancel_tag_all(message.chat_id)
 
             if success:
+                cancel_text = (
+                    "**Tag Massal Dibatalkan**\n\n"
+                    "Proses penandaan telah dihentikan sesuai permintaan admin."
+                )
                 await message.reply(
-                    "**Tag All Cancelled**\n\n"
-                    "The tagging process has been stopped."
+                    VBotBranding.wrap_message(cancel_text, include_footer=False)
                 )
             else:
-                await message.reply("**No active tag all process in this chat.**")
+                await message.reply(
+                    VBotBranding.format_error("Tidak ada proses tag massal yang aktif di percakapan ini.")
+                )
 
         except Exception as e:
             logger.error(f"Error in cancel command: {e}", exc_info=True)
-            await message.reply(f"**Error:** {str(e)}")
+            await message.reply(
+                VBotBranding.format_error(f"Galat sistem: {str(e)}")
+            )
 
 
 async def main():

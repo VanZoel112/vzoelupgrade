@@ -247,6 +247,7 @@ PREFIX_PUBLIC = os.getenv("PREFIX_PUBLIC", "#")   # For public commands
 # ==============================================
 
 TAG_DELAY = float(os.getenv("TAG_DELAY", "2.0"))  # Seconds between tags
+TAG_BATCH_SIZE = int(os.getenv("TAG_BATCH_SIZE", "5"))  # Members per edit batch
 MUSIC_COOLDOWN = int(os.getenv("MUSIC_COOLDOWN", "5"))  # Seconds cooldown for music commands
 
 
