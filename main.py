@@ -739,8 +739,6 @@ class VBot:
             elif command == '/cancel' and not (message.is_group or message.is_channel):
                 # Biarkan generator session dan alur lainnya menangani /cancel di private chat
                 return
-            elif command == '/tagall':
-                await self._handle_tagall_command(message, parts)
             elif command == self._dot_tag_command:
                 await self._handle_dot_tag_command(message)
             elif command == '/cancel':
@@ -1009,7 +1007,6 @@ By Vzoel Fox's
                     ("`/locklist`", "Daftar pengguna yang terkunci"),
                     (f"{tag_start_display} [batch] <text>", "Mention semua anggota via edit batch"),
                     (f"{tag_stop_display}", "Batalkan penandaan massal"),
-                    ("`/tagall <text>`", "Mention semua anggota"),
                     (f"`{self._dot_tag_command} [batch] <text>`", "Mention semua anggota via edit batch"),
                     ("`/cancel`", "Batalkan penandaan massal"),
                 ],
