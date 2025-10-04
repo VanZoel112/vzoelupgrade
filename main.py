@@ -585,6 +585,16 @@ class VBot:
                 command = command.split('@')[0]
                 command_parts[0] = command
 
+            if self.plugin_loader:
+                if await self.plugin_loader.dispatch_command(
+                    command, message, command_parts
+                ):
+                    command_success = True
+                    return
+                if self.plugin_loader.handles_command(command):
+                    command_success = True
+                    return
+
             command_type = self.auth_manager.get_command_type(command_text)
 
             # Keep admin snapshots fresh so each group maintains its own list
