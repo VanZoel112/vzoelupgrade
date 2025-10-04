@@ -36,6 +36,12 @@ class AuthManager:
         self._tag_command_prefixes = (".", "/", "+")
         self._admin_tag_commands = {f"{prefix}t" for prefix in self._tag_command_prefixes}
         self._admin_tag_cancel_commands = {f"{prefix}c" for prefix in self._tag_command_prefixes}
+        # Kompatibilitas mundur: atribut lama yang mungkin masih digunakan modul lain
+        self.admin_tag_commands = self._admin_tag_commands
+        self.admin_tag_cancel_commands = self._admin_tag_cancel_commands
+        self._admin_override_commands = (
+            self._admin_tag_commands | self._admin_tag_cancel_commands
+        )
         self._admin_override_commands = (
             self._admin_tag_commands | self._admin_tag_cancel_commands
         )
@@ -207,21 +213,31 @@ class AuthManager:
 
     async def log_command_usage(self, user_id: int, chat_id: int, command: str, success: bool):
         """Log command usage for monitoring."""
-        status = "SUCCESS" if success else "DENIED"
-        logger.info(f"Command {status}: user_id={user_id}, chat_id={chat_id}, command={command}")
+        status = "BERHASIL" if success else "DITOLAK"
+        logger.info(
+            "Command %s: user_id=%s, chat_id=%s, command=%s",
+            status,
+            user_id,
+            chat_id,
+            command,
+        )
 
     def get_permission_error_message(self, command_type: str) -> str:
         """Get appropriate error message for permission denial."""
         if self._last_denied_reason == "add_admins_required":
-            return "Access denied. This command requires Add Admins permission in this group."
+            return (
+                "Akses ditolak. Perintah ini memerlukan izin Tambah Admin di grup ini."
+            )
         if self._last_denied_reason == "not_chat_admin":
-            return "Access denied. Only group administrators can use this command."
+            return "Akses ditolak. Hanya admin grup yang dapat memakai perintah ini."
         if self._last_denied_reason == "permissions_unavailable":
-            return "Access denied. Unable to verify your admin permissions in this chat."
+            return (
+                "Akses ditolak. Sistem tidak dapat memverifikasi izin admin Anda dalam percakapan ini."
+            )
         if command_type == "owner":
-            return "Access denied. Owner-level authorization required."
+            return "Akses ditolak. Diperlukan otorisasi level owner."
         elif command_type == "admin":
-            return "Access denied. Admin authorization required."
+            return "Akses ditolak. Diperlukan otorisasi admin."
         elif command_type == "public":
-            return "Access denied. Public commands are disabled."
-        return "Access denied."
+            return "Akses ditolak. Perintah publik sedang dinonaktifkan."
+        return "Akses ditolak."

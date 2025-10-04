@@ -2503,11 +2503,22 @@ Contact @VZLfxs for support & inquiries
             if not success:
                 if message.chat_id in self.tag_manager.active_tags:
                     await message.reply(
-                        "**Tag all already in progress!**\n\n"
-                        "Wait for current process to finish or use `/cancel` to stop it."
+                        VBotBranding.format_error(
+                            "Proses tag massal sedang berlangsung. Tunggu hingga selesai atau gunakan `.c`/`/c`/`+c`."
+                        )
                     )
                 else:
                     await message.reply(
+                        VBotBranding.format_error(
+                            "Tag massal gagal dimulai. Periksa anggota dan izin bot."
+                        )
+                    )
+
+        except Exception as e:
+            logger.error(f"Error in tag command: {e}", exc_info=True)
+            await message.reply(
+                VBotBranding.format_error(f"Galat sistem: {str(e)}")
+            )
                         "**Error:** Could not start tag all. No members found or insufficient permissions."
                     )
 
@@ -2515,8 +2526,8 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Error in dot tag command: {e}", exc_info=True)
             await message.reply(f"**Error:** {str(e)}")
 
-    async def _handle_cancel_command(self, message):
-        """Handle /cancel command - cancel ongoing tag all"""
+    async def _handle_tag_cancel_command(self, message):
+        """Handle perintah pembatalan tag massal."""
         if not message.is_group and not message.is_channel:
             await message.reply(
                 VBotBranding.format_error("Perintah pembatalan hanya tersedia di grup atau kanal.")
