@@ -7,9 +7,11 @@ Author: Vzoel Fox's
 
 import logging
 from datetime import datetime, timezone
-from telethon import events
 
 logger = logging.getLogger(__name__)
+
+
+HANDLED_COMMANDS = {"/ping"}
 
 
 class PingHandler:
@@ -47,7 +49,7 @@ class PingHandler:
 
         return " ".join(parts)
 
-    async def handle_ping(self, event):
+    async def handle_ping(self, message, command: str, command_parts):
         """
         Handle /ping command
         Shows: latency, processing time, uptime
@@ -55,7 +57,7 @@ class PingHandler:
         """
         try:
             # Get command context if available
-            message_id = getattr(event.message, "id", None)
+            message_id = getattr(message, "id", None)
             command_status = None
             if hasattr(self.bot, "_command_context") and message_id is not None:
                 command_status = self.bot._command_context.get(message_id)
@@ -67,7 +69,7 @@ class PingHandler:
 
             # Calculate latency
             now = datetime.now(timezone.utc)
-            message_time = event.message.date
+            message_time = message.date
             if isinstance(message_time, datetime) and message_time.tzinfo is None:
                 message_time = message_time.replace(tzinfo=timezone.utc)
 
@@ -113,30 +115,23 @@ class PingHandler:
                 except Exception as edit_error:
                     logger.debug(f"Failed to update ping status message: {edit_error}")
 
-            await event.reply(result_text)
+            await message.reply(result_text)
 
         except Exception as e:
             logger.error(f"Error in ping handler: {e}", exc_info=True)
-            await event.reply(f"❌ **Ping failed:** {str(e)}")
+            await message.reply(f"❌ **Ping failed:** {str(e)}")
 
 
 def setup(bot):
     """Setup ping plugin"""
-    bot_client = getattr(bot, "client", bot)
-    if bot_client is None:
-        logger.warning("Ping plugin skipped: bot has no client instance")
-        return
-
     handler = PingHandler(bot)
 
-    @bot_client.on(events.NewMessage(pattern=r'^/ping$'))
-    async def handle_ping_command(event):
-        """Handle /ping command - available to all users"""
-        await handler.handle_ping(event)
+    async def _dispatch(message, raw_command: str, command_parts):
+        await handler.handle_ping(message, raw_command, command_parts)
 
-    # Export handler for reference
+    if not bot.plugin_loader.register_command_handler(HANDLED_COMMANDS, _dispatch):
+        logger.warning("Ping plugin skipped: command already registered")
+        return
+
     setattr(bot, "ping_handler", handler)
-    if bot_client is not bot:
-        setattr(bot_client, "ping_handler", handler)
-
     logger.info("✅ Ping plugin loaded")

@@ -573,6 +573,9 @@ class VBot:
             self._command_context[message_id] = CommandStatus(start_time=start_time)
         command_text = message.text.lower()
 
+        command_success = False
+        error_message: Optional[str] = None
+
         try:
             command_parts = command_text.split()
             command = command_parts[0]
@@ -581,6 +584,16 @@ class VBot:
             if '@' in command:
                 command = command.split('@')[0]
                 command_parts[0] = command
+
+            if self.plugin_loader:
+                if await self.plugin_loader.dispatch_command(
+                    command, message, command_parts
+                ):
+                    command_success = True
+                    return
+                if self.plugin_loader.handles_command(command):
+                    command_success = True
+                    return
 
             command_type = self.auth_manager.get_command_type(command_text)
 
@@ -599,16 +612,7 @@ class VBot:
 
             if not has_permission:
                 error_msg = self.auth_manager.get_permission_error_message(command_type)
-
-                # Log failed permission check
-                execution_time = (datetime.now() - start_time).total_seconds()
-                await vbot_logger.log_command(
-                    message.sender_id,
-                    command_text,
-                    success=False,
-                    execution_time=execution_time,
-                    error="Permission denied"
-                )
+                error_message = "Permission denied"
 
                 if config.ENABLE_PRIVACY_SYSTEM:
                     await self.privacy_manager.process_private_command(
@@ -648,32 +652,17 @@ class VBot:
 
             # Route commands
             await self._route_command(message, command, command_parts)
-
-            # Log successful command execution
-            execution_time = (datetime.now() - start_time).total_seconds()
-            await vbot_logger.log_command(
-                message.sender_id,
-                command_text,
-                success=True,
-                execution_time=execution_time
-            )
+            command_success = True
 
         except Exception as e:
             # Log error with full context
-            execution_time = (datetime.now() - start_time).total_seconds()
+            if error_message is None:
+                error_message = str(e)
             await vbot_logger.log_error(
                 e,
                 context=f"Command execution: {command_text}",
                 user_id=message.sender_id,
                 send_to_telegram=True
-            )
-
-            await vbot_logger.log_command(
-                message.sender_id,
-                command_text,
-                success=False,
-                execution_time=execution_time,
-                error=str(e)
             )
 
             command_status = self._command_context.get(message_id) if message_id is not None else None
@@ -687,6 +676,14 @@ class VBot:
                     logger.debug(f"Failed to update status message: {edit_error}")
 
         finally:
+            execution_time = (datetime.now() - start_time).total_seconds()
+            await vbot_logger.log_command(
+                message.sender_id,
+                command_text,
+                success=command_success,
+                execution_time=execution_time,
+                error=error_message,
+            )
             self._finalize_command_status(message_id)
 
     def _finalize_command_status(self, message_id: Optional[int]):
