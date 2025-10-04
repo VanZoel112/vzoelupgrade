@@ -42,6 +42,11 @@ class AuthManager:
         self._admin_override_commands = (
             self._admin_tag_commands | self._admin_tag_cancel_commands
         )
+        self._admin_override_commands = (
+            self._admin_tag_commands | self._admin_tag_cancel_commands
+        )
+        dev_prefix = getattr(config, "PREFIX_DEV", ".") or "."
+        self.admin_dot_commands = {f"{dev_prefix}t".lower()}
         self._last_denied_reason: Optional[str] = None
 
     # ------------------------------------------------------------------ #
@@ -151,6 +156,7 @@ class AuthManager:
         if not command:
             return None
         if command in self._admin_override_commands:
+        if command in self.admin_dot_commands:
             return "admin"
         if command.startswith('+'):
             return "owner"
@@ -185,6 +191,7 @@ class AuthManager:
             return await self.can_use_owner_command(user_id)
         elif command_type == "admin":
             if cmd in self._admin_override_commands:
+            if cmd in self.admin_dot_commands:
                 return await self.can_use_admin_command(
                     client,
                     user_id,
