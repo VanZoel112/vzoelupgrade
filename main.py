@@ -45,6 +45,7 @@ from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.utils import pack_bot_file_id
 from telethon.errors import (
     ChatAdminRequiredError,
+    MessageNotModifiedError,
     UserAlreadyParticipantError,
     UserPrivacyRestrictedError,
     UserNotMutualContactError,
@@ -1607,8 +1608,8 @@ Contact @VZLfxs for support & inquiries
             send_kwargs["buttons"] = buttons
 
         logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
-        try:
-            if logo_id:
+        if logo_id:
+            try:
                 await self.client.send_file(chat_id, logo_id, **send_kwargs)
                 if status_message:
                     try:
@@ -1616,13 +1617,15 @@ Contact @VZLfxs for support & inquiries
                     except Exception:
                         pass
                 return True
-        except Exception as exc:
-            logger.error(f"Failed to send configured music logo: {exc}")
+            except Exception as exc:
+                logger.error(f"Failed to send configured music logo: {exc}")
 
-        fallback_path = Path("assets/branding/vbot_branding.png")
-        if fallback_path.exists():
+        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "").strip()
+        logo_path = Path(logo_path_value).expanduser() if logo_path_value else None
+
+        async def _send_fallback(source: str) -> bool:
             try:
-                await self.client.send_file(chat_id, fallback_path, **send_kwargs)
+                await self.client.send_file(chat_id, source, **send_kwargs)
                 if status_message:
                     try:
                         await status_message.delete()
@@ -1630,13 +1633,41 @@ Contact @VZLfxs for support & inquiries
                         pass
                 return True
             except Exception as exc:
-                logger.error(f"Failed to send fallback branding image: {exc}")
+                logger.error(f"Failed to send fallback music logo from '{source}': {exc}")
+                return False
 
-        if status_message:
-            try:
-                await status_message.edit(caption, buttons=buttons)
-            except Exception as exc:
-                logger.error(f"Unable to update status message with caption fallback: {exc}")
+        if logo_path_value:
+            if logo_path_value.startswith(("http://", "https://")):
+                if await _send_fallback(logo_path_value):
+                    return True
+            else:
+                path_candidates = []
+                if logo_path:
+                    path_candidates.append(logo_path)
+
+                if logo_path and not logo_path.is_absolute():
+                    project_root = Path(__file__).resolve().parent
+                    path_candidates.append(project_root / logo_path_value)
+
+                resolved_candidates = []
+                for candidate in path_candidates:
+                    try:
+                        resolved_candidate = candidate.expanduser().resolve(strict=False)
+                    except OSError:
+                        continue
+
+                    resolved_candidates.append(resolved_candidate)
+                    if resolved_candidate.is_file():
+                        if await _send_fallback(str(resolved_candidate)):
+                            return True
+
+                if not resolved_candidates or not any(
+                    candidate.is_file() for candidate in resolved_candidates
+                ):
+                    logger.error(
+                        "Configured music logo fallback path '%s' does not exist",
+                        logo_path_value,
+                    )
 
         return False
 
@@ -1925,7 +1956,15 @@ Contact @VZLfxs for support & inquiries
                     status_message=status_msg,
                 )
                 if not sent:
-                    await status_msg.edit(caption, buttons=buttons_param)
+                    try:
+                        await status_msg.edit(caption, buttons=buttons_param)
+                    except MessageNotModifiedError:
+                        logger.debug("Music status message was already up to date")
+                    except Exception as exc:
+                        logger.error(
+                            "Unable to update status message with caption fallback: %s",
+                            exc,
+                        )
 
                 return
 
