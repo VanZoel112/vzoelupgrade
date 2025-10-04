@@ -158,6 +158,8 @@ class TagManager:
                 progress_text = (
                     f"{base_message}\n\n{' '.join(mentions)}\n\n"
                     f"Progres oleh {{plugins}} by VBot: {progress}"
+                    f"Progres oleh {{plugins}} by VBot: {progress}",
+                    plugin_name=self.PLUGIN_NAME,
                 )
 
                 updated_text = VBotBranding.apply_placeholders(
