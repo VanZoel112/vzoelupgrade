@@ -11,6 +11,7 @@ import asyncio
 import io
 import json
 import logging
+import os
 import random
 import re
 import sys
@@ -20,8 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
-from typing import Any, Deque, Dict, Optional, List, Set, Tuple
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 
 try:
     import uvloop
@@ -108,6 +108,9 @@ class VBot:
         prefix_dev = getattr(config, "PREFIX_DEV", ".") or "."
         self._dot_tag_command = (prefix_dev + "t").lower()
         self._help_pages = self._build_help_pages()
+        self._music_logo_file_id = self._coerce_music_logo_id(
+            getattr(config, "MUSIC_LOGO_FILE_ID", "")
+        )
         self._music_logo_file_id = getattr(config, "MUSIC_LOGO_FILE_ID", "")
         self._project_root = Path(__file__).resolve().parent
         try:
@@ -1414,14 +1417,16 @@ Contact @VZLfxs for support & inquiries
     async def _update_music_logo_file_id(self, file_id: str) -> None:
         """Persist the logo file id to runtime, config.py, and .env."""
 
-        self._music_logo_file_id = file_id
-        config.MUSIC_LOGO_FILE_ID = file_id
+        self._music_logo_file_id = self._coerce_music_logo_id(file_id)
+        config.MUSIC_LOGO_FILE_ID = self._music_logo_file_id
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._write_music_logo_configuration, file_id)
 
     def _write_music_logo_configuration(self, file_id: str) -> None:
         """Write the logo file id to .env and config.py."""
+
+        file_id = self._coerce_music_logo_id(file_id)
 
         env_path = Path(".env").resolve()
         self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_ID", file_id)
@@ -1452,6 +1457,43 @@ Contact @VZLfxs for support & inquiries
             except OSError as exc:
                 logger.error(f"Failed to write config.py for logo update: {exc}")
 
+    @staticmethod
+    def _coerce_music_logo_id(value: Any) -> str:
+        """Convert a configured logo file id into a clean string."""
+
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            try:
+                return value.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                return value.decode("utf-8", "ignore").strip()
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
+
+    def _coerce_music_logo_path(self, value: Any) -> str:
+        """Convert a configured logo file path into a clean string."""
+
+        if value is None:
+            return ""
+        if isinstance(value, Path):
+            return str(value).strip()
+        if isinstance(value, bytes):
+            try:
+                value = value.decode("utf-8")
+            except UnicodeDecodeError:
+                value = value.decode("utf-8", "ignore")
+        try:
+            coerced = os.fspath(value)
+        except TypeError:
+            coerced = str(value)
+        return str(coerced).strip()
+
+    def _resolve_music_logo_local_candidates(self, path_value: Any) -> List[Path]:
+        """Return unique candidate paths to try for a configured logo value."""
+
+        trimmed = self._coerce_music_logo_path(path_value)
     def _resolve_music_logo_local_candidates(self, path_value: str) -> List[Path]:
         """Return unique candidate paths to try for a configured logo value."""
 
@@ -1651,6 +1693,10 @@ Contact @VZLfxs for support & inquiries
         if buttons:
             send_kwargs["buttons"] = buttons
 
+        raw_logo_id = self._music_logo_file_id or getattr(
+            config, "MUSIC_LOGO_FILE_ID", ""
+        )
+        logo_id = self._coerce_music_logo_id(raw_logo_id)
         logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
         if logo_id:
             try:
@@ -1663,6 +1709,11 @@ Contact @VZLfxs for support & inquiries
                 return True
             except Exception as exc:
                 logger.error(f"Failed to send configured music logo: {exc}")
+
+        logo_path_value = self._coerce_music_logo_path(
+            getattr(config, "MUSIC_LOGO_FILE_PATH", "")
+        )
+
 
         logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "").strip()
         logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "")
@@ -1682,6 +1733,14 @@ Contact @VZLfxs for support & inquiries
                 return False
 
         if logo_path_value:
+            lowered_path_value = logo_path_value.lower()
+            if lowered_path_value.startswith(("http://", "https://")):
+                if await _send_fallback(logo_path_value):
+                    return True
+            else:
+                normalized_value = self._coerce_music_logo_path(
+                    logo_path_value[7:]
+                    if lowered_path_value.startswith("file://")
             if logo_path_value.startswith(("http://", "https://")):
                 if await _send_fallback(logo_path_value):
                     return True
