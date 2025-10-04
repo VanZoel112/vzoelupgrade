@@ -22,9 +22,16 @@ class TagManager:
     PLUGIN_NAME = "Tag Manager"
 
     def __init__(self):
-        
+
         self.active_tags: Dict[int, Dict] = {}  # chat_id -> tag session info
         self.cancelled_tags: Set[int] = set()  # chat_ids with cancelled tags
+
+    def _format_with_branding(self, text: str) -> str:
+        """Apply consistent branding placeholders to ``text`` safely."""
+        return VBotBranding.apply_placeholders(
+            text,
+            **{"plugin_name": self.PLUGIN_NAME},
+        )
 
     async def start_tag_all(
         self,
@@ -118,6 +125,8 @@ class TagManager:
             batch_size = session.get('batch_size', 5)
 
             # Send initial message
+            initial_text = self._format_with_branding(
+                f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot..."
             initial_text = VBotBranding.apply_placeholders(
                 f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot...",
                 plugin_name=self.PLUGIN_NAME,
@@ -167,6 +176,8 @@ class TagManager:
                     plugin_name=self.PLUGIN_NAME,
                 )
 
+                updated_text = self._format_with_branding(progress_text)
+
                 try:
                     await message_obj.edit(updated_text)
                 except Exception as edit_error:
@@ -180,6 +191,8 @@ class TagManager:
                 await asyncio.sleep(config.TAG_DELAY)
 
             # Final message
+            final_text = self._format_with_branding(
+                f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot."
             final_text = VBotBranding.apply_placeholders(
                 f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot.",
                 plugin_name=self.PLUGIN_NAME,
@@ -202,6 +215,8 @@ class TagManager:
             session = self.active_tags.get(chat_id)
             if session and session.get('message_obj'):
                 try:
+                    cancel_text = self._format_with_branding(
+                        f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot."
                     cancel_text = VBotBranding.apply_placeholders(
                         f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot.",
                         plugin_name=self.PLUGIN_NAME,
