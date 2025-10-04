@@ -155,9 +155,15 @@ class TagManager:
 
                 # Update message with current batch
                 progress = f"({session['tagged_count'] + len(batch_members)}/{len(members)})"
-                updated_text = VBotBranding.apply_placeholders(
+                progress_text = (
                     f"{base_message}\n\n{' '.join(mentions)}\n\n"
+                    f"Progres oleh {{plugins}} by VBot: {progress}"
                     f"Progres oleh {{plugins}} by VBot: {progress}",
+                    plugin_name=self.PLUGIN_NAME,
+                )
+
+                updated_text = VBotBranding.apply_placeholders(
+                    progress_text,
                     plugin_name=self.PLUGIN_NAME,
                 )
 
