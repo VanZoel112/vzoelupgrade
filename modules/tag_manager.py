@@ -22,9 +22,16 @@ class TagManager:
     PLUGIN_NAME = "Tag Manager"
 
     def __init__(self):
-        
+
         self.active_tags: Dict[int, Dict] = {}  # chat_id -> tag session info
         self.cancelled_tags: Set[int] = set()  # chat_ids with cancelled tags
+
+    def _format_with_branding(self, text: str) -> str:
+        """Apply consistent branding placeholders to ``text`` safely."""
+        return VBotBranding.apply_placeholders(
+            text,
+            **{"plugin_name": self.PLUGIN_NAME},
+        )
 
     async def start_tag_all(
         self,
@@ -118,10 +125,7 @@ class TagManager:
             batch_size = session.get('batch_size', 5)
 
             # Send initial message
-            initial_text = VBotBranding.apply_placeholders(
-                f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot...",
-                plugin_name=self.PLUGIN_NAME,
-            initial_text = (
+            initial_text = self._format_with_branding(
                 f"{base_message}\n\nSedang memulai proses tag oleh {{plugins}} by VBot..."
             )
             message_obj = await client.send_message(
@@ -152,17 +156,17 @@ class TagManager:
                             mentions.append(f"@{user.username}")
                         else:
                             mentions.append(f"[User](tg://user?id={user_id})")
-                    except:
+                    except Exception:
                         mentions.append(f"[User](tg://user?id={user_id})")
 
                 # Update message with current batch
                 progress = f"({session['tagged_count'] + len(batch_members)}/{len(members)})"
-                updated_text = VBotBranding.apply_placeholders(
+                progress_text = (
                     f"{base_message}\n\n{' '.join(mentions)}\n\n"
-                    f"Progres oleh {{plugins}} by VBot: {progress}",
-                    plugin_name=self.PLUGIN_NAME,
                     f"Progres oleh {{plugins}} by VBot: {progress}"
                 )
+
+                updated_text = self._format_with_branding(progress_text)
 
                 try:
                     await message_obj.edit(updated_text)
@@ -177,15 +181,12 @@ class TagManager:
                 await asyncio.sleep(config.TAG_DELAY)
 
             # Final message
-            final_text = VBotBranding.apply_placeholders(
-                f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot.",
-                plugin_name=self.PLUGIN_NAME,
-            final_text = (
+            final_text = self._format_with_branding(
                 f"{base_message}\n\nSeluruh {len(members)} anggota berhasil ditandai oleh {{plugins}} by VBot."
             )
             try:
                 await message_obj.edit(final_text)
-            except:
+            except Exception:
                 pass
 
             # Cleanup
@@ -201,14 +202,11 @@ class TagManager:
             session = self.active_tags.get(chat_id)
             if session and session.get('message_obj'):
                 try:
-                    cancel_text = VBotBranding.apply_placeholders(
-                        f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot.",
-                        plugin_name=self.PLUGIN_NAME,
-                    cancel_text = (
+                    cancel_text = self._format_with_branding(
                         f"{session['message']}\n\nProses tag dibatalkan oleh admin {{plugins}} by VBot."
                     )
                     await session['message_obj'].edit(cancel_text)
-                except:
+                except Exception:
                     pass
 
             self._cleanup_tag_session(chat_id)
