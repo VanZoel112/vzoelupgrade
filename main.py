@@ -493,10 +493,17 @@ class VBot:
 
             # Branding info callback
             elif data == "branding:info":
-                await event.answer(
-                    "DEVELOPED by. Vzoel Fox's (Lutpan) ID : @VZLfxs / @itspizolpoks",
-                    alert=True
-                )
+                media_path, caption = VBotBranding.get_branding_media()
+
+                if media_path:
+                    await event.answer("Mengirim branding resmi VBot...")
+                    await event.respond(file=str(media_path), caption=caption)
+                else:
+                    await event.answer(
+                        "Branding image belum tersedia di server bot.",
+                        alert=True,
+                    )
+                    await event.edit(VBotBranding.get_branding_missing_notice())
 
             # Session generator callback
             elif data == "start_gensession":

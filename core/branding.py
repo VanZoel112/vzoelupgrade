@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""
-VBot Branding & Animation Utilities
-Provides consistent branding and loading animations
+"""VBot branding utilities and helpers.
 
-Author: Vzoel Fox's
-Version: 1.0.0
+This module centralises all formatting helpers, placeholder handling, and
+branding asset lookups used throughout the project.
 """
 
 import asyncio
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict, Optional, Tuple
 
+from .branding_assets import VBotBrandingAssets
 
 class VBotBranding:
     """VBot branding and animation utilities"""
@@ -17,6 +17,11 @@ class VBotBranding:
     HEADER = "**VBot Music – {plugins} by VBot**"
     FOOTER = "**{plugins} by VBot**"
     DEFAULT_PLUGIN_NAME = "VBot"
+    BRANDING_MISSING_MESSAGE = (
+        "**Branding Asset Tidak Ditemukan**\n\n"
+        "Unggah gambar resmi ke `assets/branding/vbot_branding.png` untuk "
+        "menampilkan branding visual secara otomatis."
+    )
 
     # Loading animation frames
     LOADING_FRAMES = [
@@ -177,3 +182,28 @@ class VBotBranding:
         """Format success message with branding"""
         content = f"**Success**\n\n{success_msg}"
         return VBotBranding.wrap_message(content, include_footer=False)
+
+    # ------------------------------------------------------------------
+    # Branding asset helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def get_branding_media() -> Tuple[Optional[Path], str]:
+        """Return the branding media asset path and a formatted caption."""
+
+        path, caption = VBotBrandingAssets.get_primary_image()
+        formatted_caption = VBotBranding.wrap_message(
+            caption,
+            include_footer=False,
+            plugin_name="Branding",
+        )
+        return path, formatted_caption
+
+    @staticmethod
+    def get_branding_missing_notice() -> str:
+        """Return a formatted notice when the branding asset is absent."""
+
+        return VBotBranding.wrap_message(
+            VBotBranding.BRANDING_MISSING_MESSAGE,
+            include_footer=False,
+            plugin_name="Branding",
+        )
