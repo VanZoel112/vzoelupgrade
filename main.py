@@ -36,12 +36,19 @@ logger = logging.getLogger(__name__)
 import config
 
 # Import Telethon
-from telethon import TelegramClient, events, Button, types
+from telethon import TelegramClient, events, Button, types, functions
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageEntityMentionName
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.utils import pack_bot_file_id
+from telethon.errors import (
+    ChatAdminRequiredError,
+    UserAlreadyParticipantError,
+    UserPrivacyRestrictedError,
+    UserNotMutualContactError,
+    UserNotParticipantError,
+)
 
 # Import VBot modules
 from core.auth_manager import AuthManager
@@ -71,6 +78,7 @@ class VBot:
     def __init__(self):
         self.client = None
         self.assistant_client = None  # Assistant for voice chat streaming
+        self.assistant_user = None
         self.music_manager = None  # Will be initialized after client
 
         # Initialize database (core persistence layer)
@@ -102,6 +110,8 @@ class VBot:
         self._premium_wrapper_ids: Set[int] = set()
         self._premium_wrapper_id_queue: Deque[int] = deque()
         self._premium_wrapper_id_limit = 4096
+        self._assistant_joined_chats: Set[int] = set()
+        self._assistant_join_failed_chats: Set[int] = set()
         self._tag_prefixes = (".", "/", "+")
         self._tag_start_commands = {f"{prefix}t" for prefix in self._tag_prefixes}
         self._tag_stop_commands = {f"{prefix}c" for prefix in self._tag_prefixes}
@@ -154,9 +164,18 @@ class VBot:
                         config.API_HASH
                     )
                     await self.assistant_client.start()
+                    try:
+                        self.assistant_user = await self.assistant_client.get_me()
+                    except Exception as assistant_info_error:
+                        logger.warning(
+                            "Tidak bisa mengambil informasi akun asisten: %s",
+                            assistant_info_error,
+                        )
+                        self.assistant_user = None
                 except Exception as exc:
                     logger.error(f"Failed to initialize assistant client: {exc}")
                     self.assistant_client = None
+                    self.assistant_user = None
 
             # Initialize Music Manager
             self.music_manager = MusicManager(self.client, self.assistant_client)
@@ -1512,6 +1531,173 @@ Contact @VZLfxs for support & inquiries
 
         return "\n".join(lines)
 
+    async def _notify_assistant_join_failure(self, message, chat_id: int, text: str) -> None:
+        """Inform chat once when the assistant user cannot be invited automatically."""
+
+        if chat_id in self._assistant_join_failed_chats:
+            return
+
+        try:
+            await message.reply(VBotBranding.wrap_message(text, include_footer=False))
+        except Exception as notify_error:
+            logger.debug("Tidak bisa mengirim notifikasi kegagalan asisten: %s", notify_error)
+
+        self._assistant_join_failed_chats.add(chat_id)
+
+    async def _ensure_assistant_joined(self, message) -> bool:
+        """Ensure the assistant account is present in the chat before streaming."""
+
+        if not (message.is_group or message.is_channel):
+            return True
+
+        if not self.assistant_client or not self.assistant_user:
+            return True
+
+        chat_id = getattr(message, "chat_id", None)
+        if not chat_id:
+            return True
+
+        if chat_id in self._assistant_joined_chats:
+            return True
+
+        assistant_id = getattr(self.assistant_user, "id", None)
+        if assistant_id is None:
+            return True
+
+        assistant_handle = (
+            f"@{self.assistant_user.username}"
+            if getattr(self.assistant_user, "username", None)
+            else f"ID {assistant_id}"
+        )
+        failure_message = (
+            f"Akun asisten {assistant_handle} tidak dapat ditambahkan otomatis. "
+            "Mohon tambahkan secara manual agar streaming musik Vzoel Fox's (Lutpan) dapat berjalan."
+        )
+
+        try:
+            chat_entity = await self.client.get_entity(chat_id)
+        except Exception as entity_error:
+            logger.warning(
+                "Gagal mengambil entitas grup %s untuk memastikan asisten bergabung: %s",
+                chat_id,
+                entity_error,
+            )
+            return True
+
+        resolved_id = getattr(chat_entity, "id", chat_id)
+
+        if isinstance(chat_entity, types.Channel):
+            try:
+                await self.client(
+                    functions.channels.GetParticipantRequest(chat_entity, assistant_id)
+                )
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except UserNotParticipantError:
+                pass
+            except Exception as participant_error:
+                logger.debug(
+                    "Tidak bisa memeriksa status partisipasi asisten di %s: %s",
+                    chat_id,
+                    participant_error,
+                )
+
+            try:
+                await self.client(
+                    functions.channels.InviteToChannelRequest(
+                        chat_entity,
+                        [self.assistant_user]
+                    )
+                )
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except UserAlreadyParticipantError:
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except (ChatAdminRequiredError, UserPrivacyRestrictedError) as channel_error:
+                logger.debug(
+                    "Tidak bisa menambahkan asisten ke supergroup %s: %s",
+                    chat_id,
+                    channel_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+            except Exception as invite_error:
+                logger.error(
+                    "Gagal mengundang akun asisten ke supergroup %s: %s",
+                    chat_id,
+                    invite_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+
+        elif isinstance(chat_entity, types.Chat):
+            try:
+                full_chat = await self.client(
+                    functions.messages.GetFullChatRequest(chat_entity.id)
+                )
+                participants = getattr(
+                    getattr(full_chat.full_chat, "participants", None),
+                    "participants",
+                    [],
+                )
+                for participant in participants:
+                    if getattr(participant, "user_id", None) == assistant_id:
+                        self._assistant_joined_chats.add(resolved_id)
+                        self._assistant_join_failed_chats.discard(resolved_id)
+                        return True
+            except Exception as check_error:
+                logger.debug(
+                    "Tidak bisa memastikan partisipan asisten pada chat %s: %s",
+                    chat_id,
+                    check_error,
+                )
+
+            try:
+                await self.client(
+                    functions.messages.AddChatUserRequest(
+                        chat_entity.id,
+                        self.assistant_user,
+                        fwd_limit=0,
+                    )
+                )
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except UserAlreadyParticipantError:
+                self._assistant_joined_chats.add(resolved_id)
+                self._assistant_join_failed_chats.discard(resolved_id)
+                return True
+            except (
+                ChatAdminRequiredError,
+                UserPrivacyRestrictedError,
+                UserNotMutualContactError,
+            ) as chat_error:
+                logger.debug(
+                    "Tidak bisa menambahkan asisten ke chat %s: %s",
+                    chat_id,
+                    chat_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+            except Exception as add_error:
+                logger.error(
+                    "Gagal menambahkan akun asisten ke chat %s: %s",
+                    chat_id,
+                    add_error,
+                )
+                await self._notify_assistant_join_failure(message, resolved_id, failure_message)
+                return False
+
+        else:
+            self._assistant_joined_chats.add(resolved_id)
+            self._assistant_join_failed_chats.discard(resolved_id)
+
+        return True
+
     async def _handle_music_command(self, message, parts, audio_only=True):
         """Handle music download/stream commands"""
         if not config.MUSIC_ENABLED:
@@ -1534,6 +1720,9 @@ Contact @VZLfxs for support & inquiries
                 return
 
             query = ' '.join(parts[1:])
+
+            if not await self._ensure_assistant_joined(message):
+                return
 
             # Show animated processing message
             media_type = "audio" if audio_only else "video"
