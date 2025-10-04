@@ -2958,8 +2958,6 @@ Contact @VZLfxs for support & inquiries
             custom_message = VBotBranding.apply_placeholders(
                 f"{custom_message}\n\n_{{plugins}} by VBot_",
                 plugin_name=TagManager.PLUGIN_NAME,
-            custom_message = (
-                f"{custom_message}\n\n_{{plugins}} by VBot_"
             )
 
             reply_to_msg_id = getattr(message, "reply_to_msg_id", None)
