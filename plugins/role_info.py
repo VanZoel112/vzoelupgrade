@@ -40,7 +40,7 @@ async def role_info_handler(event):
         # Role emoji mapping
         role_emoji = {
             "founder": "🔱",
-            "owner": "👑",
+            "orang_dalam": "🎖️",
             "user": "👤"
         }
 
@@ -71,7 +71,7 @@ async def role_info_handler(event):
 **Available Commands:**
 """
 
-        if role in ['founder', 'owner']:
+        if role in ['founder', 'orang_dalam']:
             role_text += "\n**Owner Commands:** (`+` prefix)\n"
             role_text += "├ +add - Add user permission\n"
             role_text += "├ +del - Remove user permission\n"
@@ -80,7 +80,7 @@ async def role_info_handler(event):
             role_text += "├ +setlogo - Set music logo\n"
             role_text += "└ +getfileid - Get file ID\n"
 
-        if role in ['founder', 'owner'] or is_group_admin:
+        if role in ['founder', 'orang_dalam'] or is_group_admin:
             role_text += "\n**Admin Commands:** (`/` prefix)\n"
             role_text += "├ /pm - Promote to admin\n"
             role_text += "├ /dm - Demote from admin\n"
@@ -148,9 +148,9 @@ async def list_devs_handler(event):
         bot_instance = event.client._bot_instance
         auth_manager = bot_instance.auth_manager
 
-        # Get owner
-        owner_id = auth_manager.owner_id
-        owner_name = await get_user_display_name(event.client, owner_id) if owner_id else "Not set"
+        # Get Orang Dalam (owner)
+        orang_dalam_id = auth_manager.owner_id
+        orang_dalam_name = await get_user_display_name(event.client, orang_dalam_id) if orang_dalam_id else "Not set"
 
         # Get founders (developers)
         founder_ids = list(auth_manager.developer_ids)
@@ -164,8 +164,8 @@ async def list_devs_handler(event):
         info_text = f"""
 **Bot Administrators**
 
-👑 **Owner:**
-{owner_name} (`{owner_id}`)
+🎖️ **Orang Dalam:**
+{orang_dalam_name} (`{orang_dalam_id}`)
 
 🔱 **Founders:** ({len(founder_ids)} total)
 {founder_list}
@@ -175,7 +175,7 @@ async def list_devs_handler(event):
 • Bypass semua permission checks
 • Dapat manage konfigurasi bot
 • Auto-granted admin rights di semua group
-• Role "Founder" di group dan private chat
+• Role "Founder" & "Orang Dalam" di group dan private chat
 """
 
         await event.reply(

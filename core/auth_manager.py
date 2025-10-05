@@ -67,7 +67,7 @@ class AuthManager:
 
     async def get_user_role(self, client, user_id: int, chat_id: int) -> str:
         """
-        Auto-detect user role and return: 'founder' (developer), 'owner', or 'user'.
+        Auto-detect user role and return: 'founder' (developer), 'orang_dalam' (owner), or 'user'.
         Uses cache for performance.
 
         Note: Admin group members (non-developer) get 'user' role but have admin
@@ -84,9 +84,9 @@ class AuthManager:
         # Developer = Founder (full access everywhere)
         if self.is_developer(user_id):
             role = "founder"
-        # Owner = Full access
+        # Owner = Orang Dalam (full access)
         elif self.is_owner(user_id):
-            role = "owner"
+            role = "orang_dalam"
         # Everyone else is "user" (admin permissions checked separately)
         else:
             role = "user"
@@ -193,12 +193,12 @@ class AuthManager:
                 "bypass_all": True,
                 "description": "Founder dengan akses penuh ke semua fitur bot dimanapun"
             },
-            "owner": {
+            "orang_dalam": {
                 "owner_commands": True,
                 "admin_commands": True,
                 "public_commands": True,
                 "bypass_all": True,
-                "description": "Bot owner dengan hak akses penuh"
+                "description": "Orang Dalam dengan hak akses penuh ke semua fitur bot"
             },
             "user": {
                 "owner_commands": False,
