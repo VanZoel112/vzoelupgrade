@@ -10,7 +10,8 @@ Version: 2.0.0 Python
 from __future__ import annotations
 
 import logging
-from typing import Optional
+import time
+from typing import Optional, Dict, Tuple
 
 import config
 
@@ -46,6 +47,14 @@ class AuthManager:
         self.admin_dot_commands = {f"{dev_prefix}t".lower()}
         self._last_denied_reason: Optional[str] = None
 
+        # Role detection cache: {(user_id, chat_id): (role, timestamp)}
+        self._role_cache: Dict[Tuple[int, int], Tuple[str, float]] = {}
+        self._role_cache_ttl = 300  # 5 minutes cache TTL
+
+        # Admin status cache: {(user_id, chat_id): (is_admin, timestamp)}
+        self._admin_cache: Dict[Tuple[int, int], Tuple[bool, float]] = {}
+        self._admin_cache_ttl = 180  # 3 minutes cache TTL
+
     # ------------------------------------------------------------------ #
     # Basic checks
     # ------------------------------------------------------------------ #
@@ -56,13 +65,74 @@ class AuthManager:
     def is_developer(self, user_id: int) -> bool:
         return user_id in self.developer_ids
 
-    async def is_admin_in_chat(self, client, user_id: int, chat_id: int) -> bool:
-        """Check if user is admin in a chat."""
-        perms = await self._get_chat_permissions(client, user_id, chat_id)
-        if not perms:
-            return False
+    async def get_user_role(self, client, user_id: int, chat_id: int) -> str:
+        """
+        Auto-detect user role and return: 'developer', 'owner', 'admin', or 'user'.
+        Uses cache for performance.
+        """
+        # Check cache first
+        cache_key = (user_id, chat_id)
+        if cache_key in self._role_cache:
+            role, timestamp = self._role_cache[cache_key]
+            if time.time() - timestamp < self._role_cache_ttl:
+                return role
 
-        return bool(getattr(perms, "is_admin", False) or getattr(perms, "is_creator", False))
+        # Detect role hierarchy
+        if self.is_developer(user_id):
+            role = "developer"
+        elif self.is_owner(user_id):
+            role = "owner"
+        elif await self.is_admin_in_chat(client, user_id, chat_id):
+            role = "admin"
+        else:
+            role = "user"
+
+        # Cache the result
+        self._role_cache[cache_key] = (role, time.time())
+
+        # Clean old cache entries (keep last 1000)
+        if len(self._role_cache) > 1000:
+            current_time = time.time()
+            self._role_cache = {
+                k: v for k, v in self._role_cache.items()
+                if current_time - v[1] < self._role_cache_ttl
+            }
+
+        logger.debug(f"Auto-detected role for user {user_id} in chat {chat_id}: {role}")
+        return role
+
+    async def is_admin_in_chat(self, client, user_id: int, chat_id: int) -> bool:
+        """Check if user is admin in a chat with caching."""
+        # Developer/Owner always have admin rights
+        if self.is_developer(user_id) or self.is_owner(user_id):
+            return True
+
+        # Check cache first
+        cache_key = (user_id, chat_id)
+        if cache_key in self._admin_cache:
+            is_admin, timestamp = self._admin_cache[cache_key]
+            if time.time() - timestamp < self._admin_cache_ttl:
+                return is_admin
+
+        # Fetch permissions from Telegram
+        perms = await self._get_chat_permissions(client, user_id, chat_id)
+        is_admin = False
+
+        if perms:
+            is_admin = bool(getattr(perms, "is_admin", False) or getattr(perms, "is_creator", False))
+
+        # Cache the result
+        self._admin_cache[cache_key] = (is_admin, time.time())
+
+        # Clean old cache entries (keep last 1000)
+        if len(self._admin_cache) > 1000:
+            current_time = time.time()
+            self._admin_cache = {
+                k: v for k, v in self._admin_cache.items()
+                if current_time - v[1] < self._admin_cache_ttl
+            }
+
+        return is_admin
 
     async def _get_chat_permissions(self, client, user_id: int, chat_id: int):
         """Retrieve permissions for the user in the given chat."""
@@ -84,6 +154,64 @@ class AuthManager:
 
     def _set_denied_reason(self, reason: str):
         self._last_denied_reason = reason
+
+    def clear_role_cache(self, user_id: Optional[int] = None, chat_id: Optional[int] = None):
+        """Clear role and admin cache. If user_id/chat_id provided, clear specific entry."""
+        if user_id is not None and chat_id is not None:
+            # Clear specific user in specific chat
+            cache_key = (user_id, chat_id)
+            self._role_cache.pop(cache_key, None)
+            self._admin_cache.pop(cache_key, None)
+            logger.info(f"Cleared role cache for user {user_id} in chat {chat_id}")
+        elif user_id is not None:
+            # Clear all entries for specific user
+            self._role_cache = {k: v for k, v in self._role_cache.items() if k[0] != user_id}
+            self._admin_cache = {k: v for k, v in self._admin_cache.items() if k[0] != user_id}
+            logger.info(f"Cleared role cache for user {user_id}")
+        elif chat_id is not None:
+            # Clear all entries for specific chat
+            self._role_cache = {k: v for k, v in self._role_cache.items() if k[1] != chat_id}
+            self._admin_cache = {k: v for k, v in self._admin_cache.items() if k[1] != chat_id}
+            logger.info(f"Cleared role cache for chat {chat_id}")
+        else:
+            # Clear all cache
+            self._role_cache.clear()
+            self._admin_cache.clear()
+            logger.info("Cleared all role cache")
+
+    def get_role_permissions(self, role: str) -> dict:
+        """Get permissions available for a role."""
+        permissions = {
+            "developer": {
+                "owner_commands": True,
+                "admin_commands": True,
+                "public_commands": True,
+                "bypass_all": True,
+                "description": "Full access to all commands"
+            },
+            "owner": {
+                "owner_commands": True,
+                "admin_commands": True,
+                "public_commands": True,
+                "bypass_all": True,
+                "description": "Bot owner with full privileges"
+            },
+            "admin": {
+                "owner_commands": False,
+                "admin_commands": True,
+                "public_commands": True,
+                "bypass_all": False,
+                "description": "Group admin with elevated privileges"
+            },
+            "user": {
+                "owner_commands": False,
+                "admin_commands": False,
+                "public_commands": True,
+                "bypass_all": False,
+                "description": "Regular user with basic access"
+            }
+        }
+        return permissions.get(role, permissions["user"])
 
     # ------------------------------------------------------------------ #
     # High-level authorization rules
