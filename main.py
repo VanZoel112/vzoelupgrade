@@ -513,17 +513,20 @@ class VBot:
 
             # Branding info callback
             elif data == "branding:info":
-                media_path, caption = VBotBranding.get_branding_media()
+                # Show owner contact info (no image to avoid errors)
+                owner_info = (
+                    "**📞 Contact Owner**\n\n"
+                    "**Owner ID:**\n"
+                    "├ @VZLfxs\n"
+                    "└ @itspizolpoks\n\n"
+                    "💬 **Kirim error ke Owner kalo nemu masalah bot**\n\n"
+                    "Lapor bug, saran, atau masalah langsung ke Owner di atas."
+                )
 
-                if media_path:
-                    await event.answer("Mengirim branding resmi VBot...")
-                    await event.respond(file=str(media_path), caption=caption)
-                else:
-                    await event.answer(
-                        "Branding image belum tersedia di server bot.",
-                        alert=True,
-                    )
-                    await event.edit(VBotBranding.get_branding_missing_notice())
+                await event.answer("Menampilkan info Owner...")
+                await event.respond(
+                    VBotBranding.wrap_message(owner_info, plugin_name="VBot Info")
+                )
 
             # Logo test callbacks
             elif data == "logo:test_branding":
