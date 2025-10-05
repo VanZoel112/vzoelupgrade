@@ -173,14 +173,8 @@ MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(50 * 1024 * 1024)))  # 50MB
 AUDIO_QUALITY = os.getenv("AUDIO_QUALITY", "bestaudio[ext=m4a]/bestaudio")
 DOWNLOAD_AUDIO_BITRATE = os.getenv("DOWNLOAD_AUDIO_BITRATE", "8000")
 STREAM_AUDIO_QUALITY = os.getenv("STREAM_AUDIO_QUALITY", "8k")
-_default_music_logo_path = (_current_dir / "assets" / "branding" / "music_logo.jpg").resolve()
-if _default_music_logo_path.is_file():
-    _default_music_logo_path_value = str(_default_music_logo_path)
-else:
-    _default_music_logo_path_value = ""
-
-MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "")
-MUSIC_LOGO_FILE_PATH = os.getenv("MUSIC_LOGO_FILE_PATH", _default_music_logo_path_value)
+MUSIC_LOGO_FILE_ID = os.getenv("MUSIC_LOGO_FILE_ID", "AgACAgUAAxUAAWjhWkqSMGrcbBK1iwVOm_frHxoYAAJNxTEbMLJZVneupO1Fz22nAQADAgADYwADNgQ")
+MUSIC_LOGO_FILE_PATH = os.getenv("MUSIC_LOGO_FILE_PATH", "")
 
 # ==============================================
 # ASSISTANT ACCOUNT (Voice Chat Streaming)

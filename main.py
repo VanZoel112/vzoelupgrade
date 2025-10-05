@@ -1585,22 +1585,30 @@ Contact @VZLfxs for support & inquiries
     ) -> None:
         """Update runtime and persistent configuration for logo assets."""
 
-        if file_id is not None:
-            self._music_logo_file_id = self._coerce_music_logo_id(file_id)
-            config.MUSIC_LOGO_FILE_ID = self._music_logo_file_id
+        updated_id = (
+            self._coerce_music_logo_id(file_id) if file_id is not None else None
+        )
+        updated_path = (
+            self._coerce_music_logo_path(file_path) if file_path is not None else None
+        )
 
-        if file_path is not None:
-            self._music_logo_file_path = self._coerce_music_logo_path(file_path)
-            config.MUSIC_LOGO_FILE_PATH = self._music_logo_file_path
-        self._music_logo_file_id = self._coerce_music_logo_id(file_id)
-        config.MUSIC_LOGO_FILE_ID = self._music_logo_file_id
+        if updated_id is not None:
+            self._music_logo_file_id = updated_id
+            config.MUSIC_LOGO_FILE_ID = updated_id
+
+        if updated_path is not None:
+            self._music_logo_file_path = updated_path
+            config.MUSIC_LOGO_FILE_PATH = updated_path
+
+        if updated_id is None and updated_path is None:
+            return
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
             self._write_music_logo_configuration,
-            file_id if file_id is not None else None,
-            file_path if file_path is not None else None,
+            updated_id,
+            updated_path,
         )
 
     def _write_music_logo_configuration(
@@ -1613,15 +1621,11 @@ Contact @VZLfxs for support & inquiries
         if file_id is None and file_path is None:
             return
 
-        file_id = self._coerce_music_logo_id(file_id)
-
         env_path = Path(".env").resolve()
         if file_id is not None:
-            coerced_id = self._coerce_music_logo_id(file_id)
-            self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_ID", coerced_id)
+            self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_ID", file_id)
         if file_path is not None:
-            coerced_path = self._coerce_music_logo_path(file_path)
-            self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_PATH", coerced_path)
+            self._update_env_file_value(env_path, "MUSIC_LOGO_FILE_PATH", file_path)
 
         config_path = Path(config.__file__).resolve()
         try:
@@ -1633,8 +1637,7 @@ Contact @VZLfxs for support & inquiries
         new_content = content
 
         if file_id is not None:
-            coerced_id = self._coerce_music_logo_id(file_id)
-            escaped_id = self._escape_config_string(coerced_id)
+            escaped_id = self._escape_config_string(file_id)
             id_pattern = re.compile(
                 r'MUSIC_LOGO_FILE_ID = os\.getenv\("MUSIC_LOGO_FILE_ID", ".*?"\)'
             )
@@ -1651,8 +1654,7 @@ Contact @VZLfxs for support & inquiries
                 )
 
         if file_path is not None:
-            coerced_path = self._coerce_music_logo_path(file_path)
-            escaped_path = self._escape_config_string(coerced_path)
+            escaped_path = self._escape_config_string(file_path)
             path_pattern = re.compile(
                 r'MUSIC_LOGO_FILE_PATH = os\.getenv\("MUSIC_LOGO_FILE_PATH", [^\n]+\)'
             )
@@ -1784,7 +1786,6 @@ Contact @VZLfxs for support & inquiries
     def _resolve_music_logo_local_candidates(self, path_value: Any) -> List[Path]:
         """Return unique candidate paths to try for a configured logo value."""
 
-        trimmed = self._coerce_music_logo_path(path_value)
     def _resolve_music_logo_local_candidates(self, path_value: str) -> List[Path]:
         """Return unique candidate paths to try for a configured logo value."""
 
@@ -1991,7 +1992,6 @@ Contact @VZLfxs for support & inquiries
             config, "MUSIC_LOGO_FILE_ID", ""
         )
         logo_id = self._coerce_music_logo_id(raw_logo_id)
-        logo_id = self._music_logo_file_id or getattr(config, "MUSIC_LOGO_FILE_ID", "")
         if logo_id:
             try:
                 await self.client.send_file(chat_id, logo_id, **send_kwargs)
@@ -2008,16 +2008,6 @@ Contact @VZLfxs for support & inquiries
             config, "MUSIC_LOGO_FILE_PATH", ""
         )
         logo_path_value = self._coerce_music_logo_path(configured_path)
-
-
-        logo_path_value = self._coerce_music_logo_path(
-            getattr(config, "MUSIC_LOGO_FILE_PATH", "")
-        )
-
-
-        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "").strip()
-        logo_path_value = getattr(config, "MUSIC_LOGO_FILE_PATH", "")
-        logo_path = Path(logo_path_value).expanduser() if logo_path_value else None
 
         async def _send_fallback(source: str) -> bool:
             try:
@@ -2045,14 +2035,6 @@ Contact @VZLfxs for support & inquiries
                 candidate_value = self._coerce_music_logo_path(candidate_value)
                 resolved_candidates = self._resolve_music_logo_local_candidates(
                     candidate_value
-                )
-                normalized_value = (
-                    logo_path_value[7:]
-                    if logo_path_value.startswith("file://")
-                    else logo_path_value
-                )
-                resolved_candidates = self._resolve_music_logo_local_candidates(
-                    normalized_value
                 )
 
                 for candidate in resolved_candidates:
