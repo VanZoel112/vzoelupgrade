@@ -1783,6 +1783,9 @@ Contact @VZLfxs for support & inquiries
             except OSError:
                 logger.debug("Failed to remove cached logo asset %s", existing)
 
+    def _resolve_music_logo_local_candidates(self, path_value: Any) -> List[Path]:
+        """Return unique candidate paths to try for a configured logo value."""
+
     def _resolve_music_logo_local_candidates(self, path_value: str) -> List[Path]:
         """Return unique candidate paths to try for a configured logo value."""
 
