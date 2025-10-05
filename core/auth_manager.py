@@ -67,8 +67,11 @@ class AuthManager:
 
     async def get_user_role(self, client, user_id: int, chat_id: int) -> str:
         """
-        Auto-detect user role and return: 'developer', 'owner', 'admin', or 'user'.
+        Auto-detect user role and return: 'founder' (developer), 'owner', or 'user'.
         Uses cache for performance.
+
+        Note: Admin group members (non-developer) get 'user' role but have admin
+        permissions in their group via is_admin_in_chat check.
         """
         # Check cache first
         cache_key = (user_id, chat_id)
@@ -78,12 +81,13 @@ class AuthManager:
                 return role
 
         # Detect role hierarchy
+        # Developer = Founder (full access everywhere)
         if self.is_developer(user_id):
-            role = "developer"
+            role = "founder"
+        # Owner = Full access
         elif self.is_owner(user_id):
             role = "owner"
-        elif await self.is_admin_in_chat(client, user_id, chat_id):
-            role = "admin"
+        # Everyone else is "user" (admin permissions checked separately)
         else:
             role = "user"
 
@@ -182,33 +186,26 @@ class AuthManager:
     def get_role_permissions(self, role: str) -> dict:
         """Get permissions available for a role."""
         permissions = {
-            "developer": {
+            "founder": {
                 "owner_commands": True,
                 "admin_commands": True,
                 "public_commands": True,
                 "bypass_all": True,
-                "description": "Full access to all commands"
+                "description": "Founder dengan akses penuh ke semua fitur bot dimanapun"
             },
             "owner": {
                 "owner_commands": True,
                 "admin_commands": True,
                 "public_commands": True,
                 "bypass_all": True,
-                "description": "Bot owner with full privileges"
-            },
-            "admin": {
-                "owner_commands": False,
-                "admin_commands": True,
-                "public_commands": True,
-                "bypass_all": False,
-                "description": "Group admin with elevated privileges"
+                "description": "Bot owner dengan hak akses penuh"
             },
             "user": {
                 "owner_commands": False,
                 "admin_commands": False,
                 "public_commands": True,
                 "bypass_all": False,
-                "description": "Regular user with basic access"
+                "description": "User biasa (admin group dapat akses admin command di group mereka)"
             }
         }
         return permissions.get(role, permissions["user"])

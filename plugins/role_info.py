@@ -39,11 +39,16 @@ async def role_info_handler(event):
 
         # Role emoji mapping
         role_emoji = {
-            "developer": "👨‍💻",
+            "founder": "🔱",
             "owner": "👑",
-            "admin": "⚡",
             "user": "👤"
         }
+
+        # Check if user is admin in this group (for display purposes)
+        is_group_admin = await auth_manager.is_admin_in_chat(event.client, user_id, chat_id)
+        admin_status = ""
+        if role == "user" and is_group_admin:
+            admin_status = "\n⚡ **Admin Group:** Ya (dapat akses admin command di group ini)"
 
         # Build role info
         role_text = f"""
@@ -52,11 +57,11 @@ async def role_info_handler(event):
 {role_emoji.get(role, '👤')} **Role:** {role.upper()}
 👤 **User:** {user_name}
 🆔 **User ID:** `{user_id}`
-💬 **Chat ID:** `{chat_id}`
+💬 **Chat ID:** `{chat_id}`{admin_status}
 
 **Permissions:**
 ├ Owner Commands: {'✅' if permissions['owner_commands'] else '❌'}
-├ Admin Commands: {'✅' if permissions['admin_commands'] else '❌'}
+├ Admin Commands: {'✅' if permissions['admin_commands'] or is_group_admin else '❌'}
 ├ Public Commands: {'✅' if permissions['public_commands'] else '❌'}
 └ Bypass All Checks: {'✅' if permissions['bypass_all'] else '❌'}
 
@@ -66,7 +71,7 @@ async def role_info_handler(event):
 **Available Commands:**
 """
 
-        if role in ['developer', 'owner']:
+        if role in ['founder', 'owner']:
             role_text += "\n**Owner Commands:** (`+` prefix)\n"
             role_text += "├ +add - Add user permission\n"
             role_text += "├ +del - Remove user permission\n"
@@ -75,7 +80,7 @@ async def role_info_handler(event):
             role_text += "├ +setlogo - Set music logo\n"
             role_text += "└ +getfileid - Get file ID\n"
 
-        if role in ['developer', 'owner', 'admin']:
+        if role in ['founder', 'owner'] or is_group_admin:
             role_text += "\n**Admin Commands:** (`/` prefix)\n"
             role_text += "├ /pm - Promote to admin\n"
             role_text += "├ /dm - Demote from admin\n"
@@ -147,14 +152,14 @@ async def list_devs_handler(event):
         owner_id = auth_manager.owner_id
         owner_name = await get_user_display_name(event.client, owner_id) if owner_id else "Not set"
 
-        # Get developers
-        dev_ids = list(auth_manager.developer_ids)
-        dev_names = []
-        for dev_id in dev_ids:
-            dev_name = await get_user_display_name(event.client, dev_id)
-            dev_names.append(f"• {dev_name} (`{dev_id}`)")
+        # Get founders (developers)
+        founder_ids = list(auth_manager.developer_ids)
+        founder_names = []
+        for founder_id in founder_ids:
+            founder_name = await get_user_display_name(event.client, founder_id)
+            founder_names.append(f"• {founder_name} (`{founder_id}`)")
 
-        dev_list = "\n".join(dev_names) if dev_names else "No developers configured"
+        founder_list = "\n".join(founder_names) if founder_names else "No founders configured"
 
         info_text = f"""
 **Bot Administrators**
@@ -162,14 +167,15 @@ async def list_devs_handler(event):
 👑 **Owner:**
 {owner_name} (`{owner_id}`)
 
-👨‍💻 **Developers:** ({len(dev_ids)} total)
-{dev_list}
+🔱 **Founders:** ({len(founder_ids)} total)
+{founder_list}
 
 **Privileges:**
-• Full access to all commands
-• Bypass all permission checks
-• Can manage bot configuration
-• Auto-granted admin rights in all groups
+• Akses penuh ke semua command dimanapun
+• Bypass semua permission checks
+• Dapat manage konfigurasi bot
+• Auto-granted admin rights di semua group
+• Role "Founder" di group dan private chat
 """
 
         await event.reply(
@@ -182,7 +188,7 @@ async def list_devs_handler(event):
 
 @events.register(events.NewMessage(pattern=r'^[/\+]clearcache(?:\s+(all|chat|user))?$'))
 async def clear_cache_handler(event):
-    """Clear role cache - /clearcache [all|chat|user] (Developer only)"""
+    """Clear role cache - /clearcache [all|chat|user] (Founder only)"""
 
     if not event.out:
         return
@@ -191,9 +197,9 @@ async def clear_cache_handler(event):
         bot_instance = event.client._bot_instance
         auth_manager = bot_instance.auth_manager
 
-        # Developer only
+        # Founder only
         if not auth_manager.is_developer(event.sender_id):
-            await event.reply(VBotBranding.format_error("This command is developer-only."))
+            await event.reply(VBotBranding.format_error("Command ini hanya untuk Founder."))
             return
 
         # Parse argument
