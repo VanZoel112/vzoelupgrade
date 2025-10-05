@@ -529,41 +529,41 @@ class MusicManager:
     async def pause(self, chat_id: int) -> str:
         """Pause the active stream."""
         if not self.streaming_available or not self.pytgcalls:
-            return "❌ Pause only available in streaming mode"
+            return "Error: Pause only available in streaming mode"
         if chat_id not in self.active_calls:
-            return "❌ Nothing is playing"
+            return "Error: Nothing is playing"
         if self.paused.get(chat_id):
-            return "⚠️ Stream already paused"
+            return "Error: Stream already paused"
         try:
             await self.pytgcalls.pause(chat_id)
             self.paused[chat_id] = True
             return "⏸️ Paused"
         except Exception as exc:
             logger.error(f"Pause failed in chat {chat_id}: {exc}")
-            return f"❌ Failed to pause: {exc}"
+            return f"Error pausing: {exc}"
 
     async def resume(self, chat_id: int) -> str:
         """Resume a paused stream."""
         if not self.streaming_available or not self.pytgcalls:
-            return "❌ Resume only available in streaming mode"
+            return "Error: Resume only available in streaming mode"
         if chat_id not in self.active_calls:
-            return "❌ Nothing is playing"
+            return "Error: Nothing is playing"
         if not self.paused.get(chat_id):
-            return "⚠️ Stream is already playing"
+            return "Error: Stream is already playing"
         try:
             await self.pytgcalls.resume(chat_id)
             self.paused[chat_id] = False
             return "▶️ Resumed"
         except Exception as exc:
             logger.error(f"Resume failed in chat {chat_id}: {exc}")
-            return f"❌ Failed to resume: {exc}"
+            return f"Error resuming: {exc}"
 
     async def stop(self, chat_id: int) -> str:
         """Stop playback and clear queue."""
         stopped = await self.stop_stream(chat_id)
         if stopped:
-            return "⏹️ Stopped playback and cleared queue"
-        return "❌ Nothing to stop"
+            return "Stopped playback and cleared queue"
+        return "Error: Nothing to stop"
 
     async def skip(self, chat_id: int) -> str:
         """Skip to the next song in queue."""
@@ -572,17 +572,17 @@ class MusicManager:
             song = result.get('song', {})
             title = song.get('title', 'Unknown')
             remaining = result.get('remaining', 0)
-            return f"⏭️ Skipped to **{title}**\n**Queue:** {remaining} remaining"
-        return f"❌ {result.get('error', 'Unable to skip')}"
+            return f"Skipped to **{title}**\n**Queue:** {remaining} remaining"
+        return f"Error: {result.get('error', 'Unable to skip')}"
 
     async def show_queue(self, chat_id: int) -> str:
         """Return a formatted queue list."""
         current = self.current_song.get(chat_id)
         queue = self.queues.get(chat_id, [])
         if not current and not queue:
-            return "📭 Queue kosong"
+            return "Queue kosong"
 
-        lines = ["**🎶 Music Queue**"]
+        lines = ["**Music Queue**"]
         loop_mode = self.loop_mode.get(chat_id, 'off')
         if loop_mode != 'off':
             loop_label = {
@@ -606,9 +606,9 @@ class MusicManager:
     async def shuffle(self, chat_id: int) -> str:
         """Shuffle queue entries."""
         if chat_id not in self.queues or len(self.queues[chat_id]) < 2:
-            return "❌ Queue kurang dari 2 lagu"
+            return "Error: Queue kurang dari 2 lagu"
         success = await self.shuffle_queue(chat_id)
-        return "🔀 Queue diacak" if success else "❌ Gagal mengacak queue"
+        return "Queue diacak" if success else "Error: Gagal mengacak queue"
 
     async def set_loop(self, chat_id: int, mode: str) -> str:
         """Configure loop behaviour."""
@@ -629,7 +629,7 @@ class MusicManager:
         elif mode in valid_modes:
             new_mode = mode
         else:
-            return "❌ Mode loop tidak dikenal. Gunakan: off/current/all"
+            return "Error: Mode loop tidak dikenal. Gunakan: off/current/all"
 
         if new_mode == 'off':
             self.loop_mode.pop(chat_id, None)
@@ -645,21 +645,21 @@ class MusicManager:
 
     async def seek(self, chat_id: int, seconds: int) -> str:
         """Seek is not available because PyTgCalls does not expose this yet."""
-        return "❌ Fitur seek belum didukung"
+        return "Error: Seek belum didukung"
 
     async def set_volume(self, chat_id: int, volume: int) -> str:
         """Adjust stream volume (0-200)."""
         if not self.streaming_available or not self.pytgcalls:
-            return "❌ Volume hanya bisa diubah saat streaming"
+            return "Error: Volume hanya bisa diubah saat streaming"
         if chat_id not in self.active_calls:
-            return "❌ Tidak ada stream aktif"
+            return "Error: Tidak ada stream aktif"
         try:
             await self.pytgcalls.change_volume_call(chat_id, volume)
             self.volume[chat_id] = volume
-            return f"🔊 Volume diatur ke {volume}%"
+            return f"Volume diatur ke {volume}%"
         except Exception as exc:
             logger.error(f"Failed to set volume in chat {chat_id}: {exc}")
-            return f"❌ Gagal mengatur volume: {exc}"
+            return f"Error mengatur volume: {exc}"
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -2059,12 +2059,12 @@ Contact @VZLfxs for support & inquiries
         seed_value = f"{song_entry.get('title', '')}:{timestamp}"
         rng = random.Random(seed_value)
         bars = ''.join(rng.choice(levels) for _ in range(width))
-        return f"🎶 {bars}"
+        return bars
 
     def _build_music_status_message(self, chat_id: int) -> str:
         """Return formatted status for current playback."""
         if not self.music_manager:
-            return "❌ Music system not initialized"
+            return "Music system not initialized"
 
         manager = self.music_manager
         current = manager.current_song.get(chat_id)
@@ -2092,7 +2092,7 @@ Contact @VZLfxs for support & inquiries
                 lines.append("")
                 lines.append(visualizer)
         else:
-            lines.append("📭 **No active playback**")
+            lines.append("**No active playback**")
 
         if loop_mode != 'off':
             loop_label = {
@@ -2141,16 +2141,16 @@ Contact @VZLfxs for support & inquiries
                     "⏸ Pause" if not paused else "▶️ Resume",
                     f"music:toggle_pause:{chat_id}".encode()
                 ),
-                Button.inline("⏭ Skip", f"music:skip:{chat_id}".encode()),
-                Button.inline("⏹ Stop", f"music:stop:{chat_id}".encode()),
+                Button.inline("Skip", f"music:skip:{chat_id}".encode()),
+                Button.inline("Stop", f"music:stop:{chat_id}".encode()),
             ],
             [
                 Button.inline(
                     f"🔁 Loop: {loop_label}",
                     f"music:loop:{chat_id}".encode()
                 ),
-                Button.inline("🔀 Shuffle", f"music:shuffle:{chat_id}".encode()),
-                Button.inline("📜 Queue", f"music:queue:{chat_id}".encode()),
+                Button.inline("Shuffle", f"music:shuffle:{chat_id}".encode()),
+                Button.inline("Queue", f"music:queue:{chat_id}".encode()),
             ],
         ]
 
@@ -2587,14 +2587,14 @@ Contact @VZLfxs for support & inquiries
     async def _handle_music_callback(self, event, data: str):
         """Process inline button callbacks for music controls."""
         if not self.music_manager:
-            await event.answer("❌ Music system not initialized", alert=True)
+            await event.answer("Music system not initialized", alert=True)
             return
 
         try:
             _, action, chat_id_raw = data.split(":", 2)
             chat_id = int(chat_id_raw)
         except ValueError:
-            await event.answer("❌ Invalid music action", alert=True)
+            await event.answer("Invalid music action", alert=True)
             return
 
         manager = self.music_manager
@@ -2618,13 +2618,13 @@ Contact @VZLfxs for support & inquiries
             elif action == "queue":
                 queue_text = await manager.show_queue(chat_id)
                 await self.client.send_message(chat_id, queue_text)
-                response_text = "📨 Queue dikirim ke chat"
+                response_text = "Queue sent to chat"
             else:
-                await event.answer("❌ Unknown action", alert=True)
+                await event.answer("Unknown action", alert=True)
                 return
         except Exception as exc:
             logger.error(f"Music callback error: {exc}", exc_info=True)
-            await event.answer("❌ Gagal memproses tombol", alert=True)
+            await event.answer("Failed to process button", alert=True)
             return
 
         try:
@@ -2635,7 +2635,7 @@ Contact @VZLfxs for support & inquiries
             logger.debug(f"Failed to update music status message: {edit_error}")
 
         if response_text:
-            show_alert = response_text.startswith("❌")
+            show_alert = response_text.lower().startswith("error")
             await event.answer(response_text, alert=show_alert)
         else:
             await event.answer("Selesai", alert=False)
@@ -2645,7 +2645,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2661,7 +2661,7 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Pause error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Pause failed: {str(e)}",
+                f"Error pausing: {str(e)}",
                 include_footer=False,
             )
 
@@ -2670,7 +2670,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2686,7 +2686,7 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Resume error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Resume failed: {str(e)}",
+                f"Error resuming: {str(e)}",
                 include_footer=False,
             )
 
@@ -2695,7 +2695,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2711,7 +2711,7 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Skip error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Skip failed: {str(e)}",
+                f"Error skipping: {str(e)}",
                 include_footer=False,
             )
 
@@ -2720,7 +2720,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2736,7 +2736,7 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Stop error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Stop failed: {str(e)}",
+                f"Error stopping: {str(e)}",
                 include_footer=False,
             )
 
@@ -2745,7 +2745,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2761,7 +2761,7 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Queue error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Queue error: {str(e)}",
+                f"Error fetching queue: {str(e)}",
                 include_footer=False,
             )
 
@@ -2770,7 +2770,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2786,7 +2786,7 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Shuffle error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Shuffle failed: {str(e)}",
+                f"Error shuffling: {str(e)}",
                 include_footer=False,
             )
 
@@ -2795,7 +2795,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2812,7 +2812,7 @@ Contact @VZLfxs for support & inquiries
             logger.error(f"Loop error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Loop error: {str(e)}",
+                f"Error updating loop: {str(e)}",
                 include_footer=False,
             )
 
@@ -2821,7 +2821,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2845,14 +2845,14 @@ Contact @VZLfxs for support & inquiries
         except ValueError:
             await self._reply_with_branding(
                 message,
-                "❌ Invalid number! Use: `/seek <seconds>`",
+                "Error: Invalid number! Use: `/seek <seconds>`",
                 include_footer=False,
             )
         except Exception as e:
             logger.error(f"Seek error: {e}")
             await self._reply_with_branding(
                 message,
-                f"❌ Seek failed: {str(e)}",
+                f"Error seeking: {str(e)}",
                 include_footer=False,
             )
 
@@ -2861,7 +2861,7 @@ Contact @VZLfxs for support & inquiries
         if not self.music_manager:
             await self._reply_with_branding(
                 message,
-                "❌ Music system not initialized",
+                "Music system not initialized",
                 include_footer=False,
             )
             return
@@ -2879,7 +2879,7 @@ Contact @VZLfxs for support & inquiries
             if not 0 <= volume <= 200:
                 await self._reply_with_branding(
                     message,
-                    "❌ Volume must be between 0-200!",
+                    "Error: Volume must be between 0-200!",
                     include_footer=False,
                 )
                 return
@@ -2893,7 +2893,7 @@ Contact @VZLfxs for support & inquiries
         except ValueError:
             await self._reply_with_branding(
                 message,
-                "Invalid number! Use: `/volume <0-200>`",
+                "Error: Invalid number! Use: `/volume <0-200>`",
                 include_footer=False,
             )
         except Exception as e:
