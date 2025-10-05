@@ -191,30 +191,33 @@ class RolePanel:
 
         role_emoji = {
             "founder": "🔱",
-            "orang_dalam": "🎖️",
-            "user": "👤",
+            "orang_dalam": "👑",
+            "user": "💎",
         }
 
         admin_status = ""
         if role == "user" and is_group_admin:
             admin_status = (
-                "\n⚡ **Admin Group:** Ya (dapat akses admin command di group ini)"
+                "\nAdmin Group: Ya (dapat akses admin command di group ini)"
             )
+
+        role_marker = role_emoji.get(role, "")
+        role_line = f"{role_marker} **Role:** {role.upper()}" if role_marker else f"**Role:** {role.upper()}"
 
         info_lines = [
             "**Role Information**",
             "",
-            f"{role_emoji.get(role, '👤')} **Role:** {role.upper()}",
-            f"👤 **User:** {user_name}",
-            f"🆔 **User ID:** `{user_id}`",
-            f"💬 **Chat ID:** `{chat_id}`{admin_status}",
+            role_line,
+            f"User: {user_name}",
+            f"User ID: `{user_id}`",
+            f"Chat ID: `{chat_id}`{admin_status}",
             "",
             "**Permissions:**",
-            f"├ Owner Commands: {'✅' if permissions['owner_commands'] else '❌'}",
+            f"├ Owner Commands: {'Yes' if permissions['owner_commands'] else 'No'}",
             "├ Admin Commands: "
-            f"{'✅' if permissions['admin_commands'] or is_group_admin else '❌'}",
-            f"├ Public Commands: {'✅' if permissions['public_commands'] else '❌'}",
-            f"└ Bypass All Checks: {'✅' if permissions['bypass_all'] else '❌'}",
+            f"{'Yes' if permissions['admin_commands'] or is_group_admin else 'No'}",
+            f"├ Public Commands: {'Yes' if permissions['public_commands'] else 'No'}",
+            f"└ Bypass All Checks: {'Yes' if permissions['bypass_all'] else 'No'}",
             "",
             "**Description:**",
             permissions.get("description", "Tidak ada deskripsi."),
@@ -281,11 +284,11 @@ class RolePanel:
         if bot_username:
             panel_link = f"https://t.me/{bot_username}?start=rolepanel"
             link_line = (
-                f"🔗 **Panel Private:** [t.me/{bot_username}?start=rolepanel]({panel_link})"
+                f"Panel Private: [t.me/{bot_username}?start=rolepanel]({panel_link})"
             )
         else:
             link_line = (
-                "🔗 **Panel Private:** Bot tidak memiliki username publik untuk link."
+                "Panel Private: Bot tidak memiliki username publik untuk link."
             )
 
         lines = [
@@ -295,12 +298,12 @@ class RolePanel:
             "",
             link_line,
             "",
-            "⌨️ **Command Trigger:**",
+            "Command Trigger:",
             "• `.role` - Tampilkan info role di chat ini",
             "• `/refreshrole` - Paksa deteksi ulang role",
             "• `/listdevs` - Daftar developer & owner",
             "",
-            "Tips: tombol `🔄 Refresh Role` akan membersihkan cache secara instan.",
+            "Tips: gunakan tombol `Refresh Role` untuk membersihkan cache secara instan.",
         ]
 
         return "\n".join(lines)
@@ -313,20 +316,20 @@ class RolePanel:
         bot_username: str,
     ) -> List[List[Button]]:
         def view_label(base: str, view_name: str) -> str:
-            return f"✅ {base}" if active_view == view_name else base
+            return f"{base} (aktif)" if active_view == view_name else base
 
         buttons: List[List[Button]] = [
             [
                 Button.inline(
-                    view_label("ℹ️ Info", "info"),
+                    view_label("Info", "info"),
                     f"role:view:info:{user_id}:{chat_id}".encode(),
                 ),
                 Button.inline(
-                    view_label("🛠 Commands", "commands"),
+                    view_label("Commands", "commands"),
                     f"role:view:commands:{user_id}:{chat_id}".encode(),
                 ),
                 Button.inline(
-                    view_label("🔗 Links", "links"),
+                    view_label("Links", "links"),
                     f"role:view:links:{user_id}:{chat_id}".encode(),
                 ),
             ]
@@ -335,7 +338,7 @@ class RolePanel:
         buttons.append(
             [
                 Button.inline(
-                    "🔄 Refresh Role",
+                    "Refresh Role",
                     f"role:refresh:{user_id}:{chat_id}".encode(),
                 )
             ]
@@ -343,7 +346,7 @@ class RolePanel:
 
         if active_view == "links" and bot_username:
             panel_link = f"https://t.me/{bot_username}?start=rolepanel"
-            buttons.append([Button.url("🔗 Buka Panel Role", panel_link)])
+            buttons.append([Button.url("Buka Panel Role", panel_link)])
 
         return buttons
 
@@ -394,19 +397,28 @@ async def role_info_handler(event):
         user_name = await get_user_display_name(event.client, user_id)
         is_group_admin = await auth_manager.is_admin_in_chat(event.client, user_id, chat_id)
 
+        role_emoji = {
+            "founder": "🔱",
+            "orang_dalam": "👑",
+            "user": "💎",
+        }
+        role_marker = role_emoji.get(role, "")
+        role_line = f"{role_marker} **Role:** {role.upper()}" if role_marker else f"**Role:** {role.upper()}"
+
         fallback_text = [
             "**Role Information**",
             "",
-            f"👤 **User:** {user_name}",
-            f"🆔 **User ID:** `{user_id}`",
-            f"💬 **Chat ID:** `{chat_id}`",
+            role_line,
+            f"User: {user_name}",
+            f"User ID: `{user_id}`",
+            f"Chat ID: `{chat_id}`",
             "",
             "**Permissions:**",
-            f"├ Owner Commands: {'✅' if permissions['owner_commands'] else '❌'}",
+            f"├ Owner Commands: {'Yes' if permissions['owner_commands'] else 'No'}",
             "├ Admin Commands: "
-            f"{'✅' if permissions['admin_commands'] or is_group_admin else '❌'}",
-            f"├ Public Commands: {'✅' if permissions['public_commands'] else '❌'}",
-            f"└ Bypass All Checks: {'✅' if permissions['bypass_all'] else '❌'}",
+            f"{'Yes' if permissions['admin_commands'] or is_group_admin else 'No'}",
+            f"├ Public Commands: {'Yes' if permissions['public_commands'] else 'No'}",
+            f"└ Bypass All Checks: {'Yes' if permissions['bypass_all'] else 'No'}",
         ]
 
         await event.reply(
@@ -438,8 +450,8 @@ async def refresh_role_handler(event):
 
         refresh_text = (
             f"**Role Cache Refreshed**\n\n"
-            f"✅ Cache cleared for user {user_id} in chat {chat_id}\n"
-            f"🔄 New role detected: **{new_role.upper()}**\n"
+            f"Cache cleared for user {user_id} in chat {chat_id}\n"
+            f"New role detected: **{new_role.upper()}**\n"
         )
 
         if role_panel:
@@ -492,7 +504,7 @@ async def list_devs_handler(event):
         info_text = f"""
 **Bot Administrators**
 
-🎖️ **Orang Dalam:**
+👑 **Owner (Orang Dalam):**
 {orang_dalam_name} (`{orang_dalam_id}`)
 
 🔱 **Founders:** ({len(founder_ids)} total)
@@ -533,13 +545,13 @@ async def clear_cache_handler(event):
 
         if scope == "all":
             auth_manager.clear_role_cache()
-            message = "✅ Cleared all role cache (all users, all chats)"
+            message = "Cleared all role cache (all users, all chats)"
         elif scope == "chat":
             auth_manager.clear_role_cache(chat_id=event.chat_id)
-            message = f"✅ Cleared role cache for chat {event.chat_id}"
+            message = f"Cleared role cache for chat {event.chat_id}"
         elif scope == "user":
             auth_manager.clear_role_cache(user_id=event.sender_id)
-            message = f"✅ Cleared role cache for user {event.sender_id}"
+            message = f"Cleared role cache for user {event.sender_id}"
         else:
             await event.reply(VBotBranding.format_error("Invalid scope. Use: all, chat, or user"))
             return
@@ -565,4 +577,4 @@ def setup(bot):
     bot.client.add_event_handler(refresh_role_handler)
     bot.client.add_event_handler(list_devs_handler)
     bot.client.add_event_handler(clear_cache_handler)
-    print("✅ Role Info plugin loaded")
+    print("Role Info plugin loaded")
