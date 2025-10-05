@@ -146,6 +146,7 @@ class VBot:
             )
 
             await self.client.start(bot_token=config.BOT_TOKEN)
+            self.client._bot_instance = self
 
             # Get bot info
             me = await self.client.get_me()
@@ -611,6 +612,15 @@ class VBot:
             # Music playback callbacks
             elif data.startswith("music:"):
                 await self._handle_music_callback(event, data)
+
+            elif data.startswith("role:"):
+                role_panel = getattr(self, "role_panel", None)
+                if role_panel:
+                    handled = await role_panel.handle_callback(event, data)
+                    if handled:
+                        return
+                await event.answer("Role panel tidak tersedia.", alert=True)
+                return
 
             else:
                 await event.answer("Unknown callback")
