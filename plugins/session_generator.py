@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 # Store session generation state
 generation_state = {}
 
+HANDLED_COMMANDS = {"/gensession"}
+
 class SessionGenerator:
     """Handle session string generation"""
 
@@ -38,18 +40,18 @@ class SessionGenerator:
             **kwargs,
         )
 
-    async def start_generation(self, event):
+    async def start_generation(self, message, command: str, command_parts):
         """Start session generation process"""
         # Only allow in private chat
-        if event.is_group or event.is_channel:
+        if message.is_group or message.is_channel:
             content = (
                 "❌ **Session generator hanya bisa digunakan di Private Chat!**\n\n"
                 "Click button di /start atau ketik /gensession di chat pribadi bot."
             )
-            await event.reply(self._wrap(content))
+            await message.reply(self._wrap(content))
             return
 
-        user_id = event.sender_id
+        user_id = message.sender_id
 
         # Check if already in progress
         if user_id in generation_state:
@@ -57,7 +59,7 @@ class SessionGenerator:
                 "⚠️ **Kamu sudah memulai proses generate session!**\n\n"
                 "Gunakan /cancel untuk membatalkan dan mulai ulang."
             )
-            await event.reply(self._wrap(content))
+            await message.reply(self._wrap(content))
             return
 
         # Initialize state
@@ -78,40 +80,41 @@ class SessionGenerator:
             "Ketik /cancel untuk membatalkan."
         )
 
-        await event.reply(self._wrap(content, include_footer=False))
+        await message.reply(self._wrap(content, include_footer=False))
 
-    async def handle_message(self, event):
+    async def handle_message(self, message):
         """Handle user messages during generation"""
-        user_id = event.sender_id
+        user_id = message.sender_id
 
         # Check if user is in generation process
         if user_id not in generation_state:
             return
 
         state = generation_state[user_id]
-        text = event.message.text.strip()
+        raw_text = getattr(message, "raw_text", None)
+        text = (raw_text if isinstance(raw_text, str) else message.text or "").strip()
 
         # Handle cancel
         if text.lower() in ['/cancel', '.cancel']:
             del generation_state[user_id]
-            await event.reply(
+            await message.reply(
                 self._wrap("❌ **Proses dibatalkan.**")
             )
             return
 
         # Process based on current step
         if state['step'] == 'api_id':
-            await self._handle_api_id(event, state, text)
+            await self._handle_api_id(message, state, text)
         elif state['step'] == 'api_hash':
-            await self._handle_api_hash(event, state, text)
+            await self._handle_api_hash(message, state, text)
         elif state['step'] == 'phone':
-            await self._handle_phone(event, state, text)
+            await self._handle_phone(message, state, text)
         elif state['step'] == 'otp':
-            await self._handle_otp(event, state, text)
+            await self._handle_otp(message, state, text)
         elif state['step'] == '2fa':
-            await self._handle_2fa(event, state, text)
+            await self._handle_2fa(message, state, text)
 
-    async def _handle_api_id(self, event, state, text):
+    async def _handle_api_id(self, message, state, text):
         """Handle API ID input"""
         try:
             api_id = int(text)
@@ -123,18 +126,18 @@ class SessionGenerator:
                 "**Step 2:** Masukkan **API Hash** kamu"
             )
 
-            await event.reply(
+            await message.reply(
                 self._wrap(content, include_footer=False)
             )
         except ValueError:
-            await event.reply(
+            await message.reply(
                 self._wrap(
                     "❌ API ID harus berupa angka! Coba lagi:",
                     include_footer=False,
                 )
             )
 
-    async def _handle_api_hash(self, event, state, text):
+    async def _handle_api_hash(self, message, state, text):
         """Handle API Hash input"""
         state['data']['api_hash'] = text
         state['step'] = 'phone'
@@ -146,9 +149,9 @@ class SessionGenerator:
             "(Dengan kode negara, tanpa spasi)"
         )
 
-        await event.reply(self._wrap(content, include_footer=False))
+        await message.reply(self._wrap(content, include_footer=False))
 
-    async def _handle_phone(self, event, state, text):
+    async def _handle_phone(self, message, state, text):
         """Handle phone number and send OTP"""
         phone = text.strip()
         state['data']['phone'] = phone
@@ -164,7 +167,7 @@ class SessionGenerator:
             await client.connect()
 
             # Send code
-            status_msg = await event.reply(
+            status_msg = await message.reply(
                 self._wrap(
                     "📱 **Mengirim kode OTP...**", include_footer=False
                 )
@@ -189,41 +192,37 @@ class SessionGenerator:
                 "❌ **Nomor HP tidak valid!**\n\n"
                 "Pastikan format: +628123456789"
             )
-            await event.reply(self._wrap(content))
+            await message.reply(self._wrap(content))
         except Exception as e:
             logger.error(f"Error sending code: {e}")
-            await event.reply(
+            await message.reply(
                 self._wrap(f"❌ **Error:** {str(e)}")
             )
-            if user_id in generation_state:
-                del generation_state[event.sender_id]
+            if message.sender_id in generation_state:
+                await state['data']['client'].disconnect()
+                del generation_state[message.sender_id]
 
-    async def _handle_otp(self, event, state, text):
+    async def _handle_otp(self, message, state, text):
         """Handle OTP code"""
         code = text.strip().replace(" ", "")
         client = state['data']['client']
 
         try:
-            status_msg = await event.reply(
+            status_msg = await message.reply(
                 self._wrap(
                     "🔐 **Verifikasi kode OTP...**", include_footer=False
                 )
             )
 
-            # Sign in with code
             await client.sign_in(
                 state['data']['phone'],
                 code,
                 phone_code_hash=state['data']['phone_code_hash']
             )
 
-            # Get session string
             session_string = client.session.save()
-
-            # Get user info
             me = await client.get_me()
 
-            # Success!
             await status_msg.delete()
 
             content = (
@@ -237,11 +236,10 @@ class SessionGenerator:
                 "⚠️ **JANGAN BAGIKAN KE SIAPAPUN!**"
             )
 
-            await event.reply(
+            await message.reply(
                 self._wrap(content, include_footer=False)
             )
 
-            # Send session string in separate message
             content = (
                 "🔑 **Session String:**\n\n"
                 f"`{session_string}`\n\n"
@@ -251,58 +249,52 @@ class SessionGenerator:
                 "```"
             )
 
-            await event.reply(
+            await message.reply(
                 self._wrap(content, include_footer=False)
             )
 
-            # Cleanup
             await client.disconnect()
-            del generation_state[event.sender_id]
+            del generation_state[message.sender_id]
 
         except PhoneCodeInvalidError:
             content = (
                 "❌ **Kode OTP salah!**\n\n"
                 "Coba lagi atau ketik /cancel untuk membatalkan."
             )
-            await event.reply(self._wrap(content))
+            await message.reply(self._wrap(content))
         except SessionPasswordNeededError:
             state['step'] = '2fa'
             content = (
                 "🔐 **Account dilindungi 2FA!**\n\n"
                 "**Step 5:** Masukkan **password 2FA** kamu"
             )
-            await event.reply(
+            await message.reply(
                 self._wrap(content, include_footer=False)
             )
         except Exception as e:
             logger.error(f"Error signing in: {e}")
-            await event.reply(
+            await message.reply(
                 self._wrap(f"❌ **Error:** {str(e)}")
             )
-            if event.sender_id in generation_state:
+            if message.sender_id in generation_state:
                 await state['data']['client'].disconnect()
-                del generation_state[event.sender_id]
+                del generation_state[message.sender_id]
 
-    async def _handle_2fa(self, event, state, text):
+    async def _handle_2fa(self, message, state, text):
         """Handle 2FA password"""
         password = text.strip()
         client = state['data']['client']
 
         try:
-            status_msg = await event.reply(
+            status_msg = await message.reply(
                 self._wrap("🔐 **Verifikasi 2FA...**", include_footer=False)
             )
 
-            # Sign in with password
             await client.sign_in(password=password)
 
-            # Get session string
             session_string = client.session.save()
-
-            # Get user info
             me = await client.get_me()
 
-            # Success!
             await status_msg.delete()
 
             content = (
@@ -316,11 +308,10 @@ class SessionGenerator:
                 "⚠️ **JANGAN BAGIKAN KE SIAPAPUN!**"
             )
 
-            await event.reply(
+            await message.reply(
                 self._wrap(content, include_footer=False)
             )
 
-            # Send session string
             content = (
                 "🔑 **Session String:**\n\n"
                 f"`{session_string}`\n\n"
@@ -330,24 +321,23 @@ class SessionGenerator:
                 "```"
             )
 
-            await event.reply(
+            await message.reply(
                 self._wrap(content, include_footer=False)
             )
 
-            # Cleanup
             await client.disconnect()
-            del generation_state[event.sender_id]
+            del generation_state[message.sender_id]
 
         except Exception as e:
             logger.error(f"Error with 2FA: {e}")
-            await event.reply(
+            await message.reply(
                 self._wrap(
                     f"❌ **Password 2FA salah atau error:** {str(e)}"
                 )
             )
-            if event.sender_id in generation_state:
+            if message.sender_id in generation_state:
                 await client.disconnect()
-                del generation_state[event.sender_id]
+                del generation_state[message.sender_id]
 
 
 def setup(bot):
@@ -359,15 +349,18 @@ def setup(bot):
 
     generator = SessionGenerator(bot_client)
 
-    @bot_client.on(events.NewMessage(pattern=r'^/gensession$'))
-    async def handle_gensession(event):
-        """Handle /gensession command"""
-        await generator.start_generation(event)
+    async def _dispatch(message, raw_command: str, command_parts):
+        await generator.start_generation(message, raw_command, command_parts)
+
+    if not bot.plugin_loader.register_command_handler("/gensession", _dispatch):
+        logger.warning("Session Generator plugin skipped: /gensession already registered")
+    else:
+        logger.info("✅ Session Generator command registered")
 
     @bot_client.on(events.NewMessage(func=lambda e: e.sender_id in generation_state and e.is_private))
     async def handle_generation_message(event):
         """Handle messages during generation"""
-        await generator.handle_message(event)
+        await generator.handle_message(event.message)
 
     # Export generator for callback use
     setattr(bot, "session_generator", generator)
