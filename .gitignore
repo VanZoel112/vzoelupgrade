@@ -52,6 +52,7 @@ downloads/*
 !downloads/.gitkeep
 
 # Logs
+*.log
 logs/*.log
 !logs/.gitkeep
 
