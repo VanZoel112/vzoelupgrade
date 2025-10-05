@@ -146,6 +146,7 @@ class VBot:
             )
 
             await self.client.start(bot_token=config.BOT_TOKEN)
+            self.client._bot_instance = self
 
             # Get bot info
             me = await self.client.get_me()
@@ -612,6 +613,15 @@ class VBot:
             elif data.startswith("music:"):
                 await self._handle_music_callback(event, data)
 
+            elif data.startswith("role:"):
+                role_panel = getattr(self, "role_panel", None)
+                if role_panel:
+                    handled = await role_panel.handle_callback(event, data)
+                    if handled:
+                        return
+                await event.answer("Role panel tidak tersedia.", alert=True)
+                return
+
             else:
                 await event.answer("Unknown callback")
 
@@ -1057,6 +1067,45 @@ class VBot:
             me = await self.client.get_me()
             bot_username = me.username or "VBot"
 
+            # Parse optional deep-link payload
+            raw_text = (getattr(message, "raw_text", "") or "").strip()
+            payload = ""
+            if raw_text:
+                parts = raw_text.split(maxsplit=1)
+                if len(parts) > 1:
+                    payload = parts[1].strip()
+
+            if payload:
+                payload_key, _, payload_view = payload.partition(":")
+                if payload_key.lower() == "rolepanel":
+                    role_panel = getattr(self, "role_panel", None)
+                    user_id = getattr(message, "sender_id", None)
+                    chat_id = getattr(message, "chat_id", None)
+
+                    if role_panel and user_id is not None and chat_id is not None:
+                        panel_text, buttons, _ = await role_panel.build_panel(
+                            self.client,
+                            user_id,
+                            chat_id,
+                            view=payload_view.lower() if payload_view else "info",
+                        )
+
+                        await message.reply(
+                            VBotBranding.wrap_message(
+                                panel_text,
+                                plugin_name="Role Info",
+                            ),
+                            buttons=buttons,
+                        )
+                    else:
+                        await message.reply(
+                            VBotBranding.wrap_message(
+                                "Role panel tidak tersedia saat ini. Gunakan /role untuk melihat informasi role.",
+                                plugin_name="Role Info",
+                            )
+                        )
+                    return
+
             # Build welcome message
             welcome_text = f"""
 **Welcome to {me.first_name}!**
@@ -1086,12 +1135,26 @@ By Vzoel Fox's
             # Different buttons for private vs group
             if message.is_private:
                 # Private chat buttons: Add to Group, Help
+                user_id = getattr(message, "sender_id", None)
                 buttons = [
                     [
                         Button.url("Add to Group", f"https://t.me/{bot_username}?startgroup=true"),
                         Button.inline("Help", f"help:page:0".encode())
                     ]
                 ]
+                if user_id is not None:
+                    buttons.append(
+                        [
+                            Button.inline(
+                                "Role Panel",
+                                f"role:view:info:{user_id}:{message.chat_id}".encode(),
+                            ),
+                            Button.inline(
+                                "Refresh Role",
+                                f"role:refresh:{user_id}:{message.chat_id}".encode(),
+                            ),
+                        ]
+                    )
             else:
                 # Group chat buttons: VBOT info toggle, Help
                 buttons = [
@@ -1167,6 +1230,9 @@ By Vzoel Fox's
                     ("`/help`", "Buka panduan interaktif ini"),
                     ("`/about`", "Informasi detail mengenai bot"),
                     ("`/ping`", "Cek latensi & uptime"),
+                    ("`/role`", "Tampilkan panel role interaktif & toggle info"),
+                    ("`/refreshrole`", "Perbarui cache role dan muat ulang panel role"),
+                    ("`/listdevs`", "Lihat daftar Founder & Orang Dalam"),
                 ],
             },
         ]
