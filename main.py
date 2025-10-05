@@ -646,34 +646,46 @@ class VBot:
                     command_success = True
                     return
 
+            # Check if command is registered in main bot
+            is_registered_command = self._is_registered_command(command)
+
+            # If command not registered anywhere, silently ignore
+            if not is_registered_command:
+                return
+
             command_type = self.auth_manager.get_command_type(command_text)
 
-            # Keep admin snapshots fresh so each group maintains its own list
-            if (
-                command_type == "admin"
-                and (message.is_group or message.is_channel)
-                and message.chat_id is not None
-            ):
-                await self._ensure_group_admin_sync(message.chat_id)
+            # Skip permission check for private chats (userbot mode)
+            if message.is_private:
+                # In private chat, all registered commands are allowed
+                pass
+            else:
+                # Keep admin snapshots fresh so each group maintains its own list
+                if (
+                    command_type == "admin"
+                    and (message.is_group or message.is_channel)
+                    and message.chat_id is not None
+                ):
+                    await self._ensure_group_admin_sync(message.chat_id)
 
-            # Check permissions
-            has_permission = await self.auth_manager.check_permissions(
-                self.client, message.sender_id, message.chat_id, command_text
-            )
+                # Check permissions for group/channel
+                has_permission = await self.auth_manager.check_permissions(
+                    self.client, message.sender_id, message.chat_id, command_text
+                )
 
-            if not has_permission:
-                error_msg = self.auth_manager.get_permission_error_message(command_type)
-                error_message = "Permission denied"
+                if not has_permission:
+                    error_msg = self.auth_manager.get_permission_error_message(command_type)
+                    error_message = "Permission denied"
 
-                if config.ENABLE_PRIVACY_SYSTEM:
-                    await self.privacy_manager.process_private_command(
-                        self.client, message, error_msg
-                    )
-                else:
-                    await message.reply(
-                        VBotBranding.format_error(error_msg)
-                    )
-                return
+                    if config.ENABLE_PRIVACY_SYSTEM:
+                        await self.privacy_manager.process_private_command(
+                            self.client, message, error_msg
+                        )
+                    else:
+                        await message.reply(
+                            VBotBranding.format_error(error_msg)
+                        )
+                    return
 
             # Pre-run visual phases
             status_message = None
@@ -736,6 +748,60 @@ class VBot:
                 error=error_message,
             )
             self._finalize_command_status(message_id)
+
+    def _is_registered_command(self, command: str) -> bool:
+        """Check if command is registered in main bot."""
+        # Normalize command
+        cmd = command.lower()
+
+        # Basic commands
+        basic_commands = {
+            '/start', '/help', '/about', '/ping',
+            '#help', '#rules', '#session',
+        }
+
+        # Owner/Developer commands
+        owner_commands = {
+            '+add', '+del', '+setwelcome', '+backup',
+            '+setlogo', '+showjson', '+getfileid',
+        }
+
+        # Admin commands
+        admin_commands = {
+            '/pm', '/dm', '/adminlist', '/admins',
+            '/lock', '/unlock', '/locklist', '/cancel',
+        }
+
+        # Music commands
+        music_commands = {
+            '/play', '/p', '/vplay', '/vp',
+            '/pause', '/resume', '/skip', '/stop',
+            '/queue', '/shuffle', '/loop', '/seek', '/volume',
+        }
+
+        # Multi-prefix commands
+        multi_prefix = {
+            '/showjson', '.showjson',
+            '/getfileid', '.getfileid',
+            '.stats', '.status',
+        }
+
+        # Dynamic tag commands
+        if cmd in self._tag_start_commands:
+            return True
+        if cmd in self._tag_stop_commands:
+            return True
+        if cmd == self._dot_tag_command:
+            return True
+
+        # Check all command sets
+        return (
+            cmd in basic_commands or
+            cmd in owner_commands or
+            cmd in admin_commands or
+            cmd in music_commands or
+            cmd in multi_prefix
+        )
 
     def _finalize_command_status(self, message_id: Optional[int]):
         """Remove command context for a completed message."""
