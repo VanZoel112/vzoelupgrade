@@ -525,6 +525,57 @@ class VBot:
                     )
                     await event.edit(VBotBranding.get_branding_missing_notice())
 
+            # Logo test callbacks
+            elif data == "logo:test_branding":
+                media_path, caption = VBotBranding.get_branding_media()
+
+                if media_path and media_path.exists():
+                    await event.answer("Mengirim branding image...")
+                    await event.respond(
+                        file=str(media_path),
+                        caption=VBotBranding.wrap_message(
+                            "**Test Branding Image ✅**\n\nBranding image berhasil dimuat!",
+                            plugin_name="Logo Test"
+                        )
+                    )
+                else:
+                    await event.answer("Branding image tidak ditemukan!", alert=True)
+                    await event.respond(
+                        VBotBranding.format_error(
+                            f"Branding image tidak ada di: `{media_path}`\n\n"
+                            "Upload file ke `assets/branding/vbot_branding.png`"
+                        )
+                    )
+
+            elif data == "logo:test_music":
+                test_caption = VBotBranding.wrap_message(
+                    "**Test Music Logo**\n\nMencoba mengirim music logo...",
+                    plugin_name="Logo Test"
+                )
+
+                try:
+                    success = await self._send_music_logo_message(
+                        event.chat_id,
+                        test_caption,
+                        status_message=None
+                    )
+
+                    if success:
+                        await event.answer("Music logo berhasil dimuat!")
+                    else:
+                        await event.answer("Music logo gagal dimuat!", alert=True)
+                        await event.respond(
+                            VBotBranding.format_error(
+                                "Music logo tidak dapat dimuat.\n\n"
+                                "**Perbaikan:**\n"
+                                "1. Upload foto logo\n"
+                                "2. Reply dengan `/setlogo`\n"
+                                "3. Atau gunakan `/fixlogo` untuk panduan lengkap"
+                            )
+                        )
+                except Exception as e:
+                    await event.answer(f"Error: {str(e)}", alert=True)
+
             # Session generator callbacks (disabled - use /gensession command directly)
             # elif data == "start_gensession":
             #     # Check if in private chat
