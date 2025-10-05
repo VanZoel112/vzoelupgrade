@@ -3270,38 +3270,72 @@ Contact @VZLfxs for support & inquiries
                 )
                 return
 
-            # Prevent locking bot developers/owners
-            if self.auth_manager.is_developer(target_user_id) or self.auth_manager.is_owner(target_user_id):
-                issuer_id = getattr(message, 'sender_id', None)
-                if not issuer_id:
-                    await self._reply_with_branding(
-                        message,
-                        "**Error:** You cannot lock bot developers or owners.",
-                        include_footer=False,
-                    )
-                    return
+            # Auto lock-back system based on hierarchy
+            # Hierarchy: Developer (Founder) > Owner (Orang Dalam) > Admin/User
+            issuer_id = getattr(message, 'sender_id', None)
+            if not issuer_id:
+                return
 
-                protected_role = "developer" if self.auth_manager.is_developer(target_user_id) else "owner"
-                punishment_reason = (
-                    f"Attempted to lock a protected {protected_role}. "
-                    "Only bot developers can unlock this restriction."
+            # Check if target is protected and issuer should be locked back
+            should_lockback = False
+            lockback_reason = ""
+            protected_role_name = ""
+
+            is_target_developer = self.auth_manager.is_developer(target_user_id)
+            is_target_owner = self.auth_manager.is_owner(target_user_id)
+            is_issuer_developer = self.auth_manager.is_developer(issuer_id)
+            is_issuer_owner = self.auth_manager.is_owner(issuer_id)
+
+            # Rule 1: Developer lock siapapun → No lockback (developer immune)
+            if is_issuer_developer:
+                pass  # Developer can lock anyone without consequences
+
+            # Rule 2: Owner lock Developer → Owner gets locked back
+            elif is_issuer_owner and is_target_developer:
+                should_lockback = True
+                protected_role_name = "Founder"
+                lockback_reason = (
+                    f"Mencoba lock Founder (Developer). "
+                    "Hanya Founder yang dapat unlock pembatasan ini."
                 )
+
+            # Rule 3: Anyone (non-developer) lock Developer → Locked back
+            elif not is_issuer_developer and is_target_developer:
+                should_lockback = True
+                protected_role_name = "Founder"
+                lockback_reason = (
+                    f"Mencoba lock Founder (Developer). "
+                    "Hanya Founder yang dapat unlock pembatasan ini."
+                )
+
+            # Rule 4: Anyone (non-owner, non-developer) lock Owner → Locked back
+            elif not is_issuer_developer and not is_issuer_owner and is_target_owner:
+                should_lockback = True
+                protected_role_name = "Orang Dalam"
+                lockback_reason = (
+                    f"Mencoba lock Orang Dalam (Owner). "
+                    "Hanya Founder atau Orang Dalam yang dapat unlock pembatasan ini."
+                )
+
+            # Execute lockback if needed
+            if should_lockback:
                 metadata = {
                     'requires_developer': True,
-                    'reason': punishment_reason,
+                    'reason': lockback_reason,
                     'locked_for': 'protected_account_attempt',
-                    'protected_role': protected_role,
+                    'protected_role': protected_role_name,
                     'protected_user_id': target_user_id,
                 }
 
                 logger.warning(
-                    "User %s attempted to lock protected %s %s", issuer_id, protected_role, target_user_id
+                    "User %s attempted to lock protected %s %s - applying lockback",
+                    issuer_id, protected_role_name, target_user_id
                 )
 
                 success = await self.lock_manager.lock_user(
                     message.chat_id,
                     issuer_id,
-                    punishment_reason,
+                    lockback_reason,
                     metadata=metadata,
                 )
 
@@ -3315,28 +3349,24 @@ Contact @VZLfxs for support & inquiries
                     except Exception:
                         issuer_label = f"User {issuer_id}"
 
-                    protected_text = (
-                        "**Protected Account Attempt**\n\n"
-                        f"{issuer_label} tried to lock a protected {protected_role} and has been locked instead.\n"
-                        "Only bot developers can unlock this restriction."
+                    lockback_text = (
+                        "**⚠️ Auto Lock-Back Activated**\n\n"
+                        f"{issuer_label} mencoba lock {protected_role_name} dan di-lock balik otomatis.\n\n"
+                        f"**Alasan:** {lockback_reason}\n\n"
+                        "Hanya Founder yang dapat unlock pembatasan ini."
                     )
                     await self._reply_with_branding(
                         message,
-                        protected_text,
+                        lockback_text,
                         include_footer=False,
                     )
                 else:
                     await self._reply_with_branding(
                         message,
-                        "**Error:** Protected account detected but failed to apply the automatic lock.",
+                        "**Error:** Protected account detected but failed to apply lockback.",
                         include_footer=False,
                     )
 
-                await self._reply_with_branding(
-                    message,
-                    "**Error:** You cannot lock bot developers or owners.",
-                    include_footer=False,
-                )
                 return
 
             # Get reason if provided
