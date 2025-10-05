@@ -375,9 +375,6 @@ async def get_user_display_name(client, user_id: int) -> str:
 async def role_info_handler(event):
     """Show current user's role and permissions - /role or .role"""
 
-    if not event.out:
-        return
-
     try:
         bot_instance = event.client._bot_instance
         role_panel: Optional[RolePanel] = getattr(bot_instance, "role_panel", None)
@@ -423,9 +420,6 @@ async def role_info_handler(event):
 @events.register(events.NewMessage(pattern=r'^[/\.\+]refreshrole$'))
 async def refresh_role_handler(event):
     """Refresh role cache - /refreshrole"""
-
-    if not event.out:
-        return
 
     try:
         bot_instance = event.client._bot_instance
@@ -473,9 +467,6 @@ async def refresh_role_handler(event):
 @events.register(events.NewMessage(pattern=r'^[/\.\+]listdevs?$'))
 async def list_devs_handler(event):
     """List developers and owner - /listdevs or .listdevs"""
-
-    if not event.out:
-        return
 
     try:
         bot_instance = event.client._bot_instance
@@ -526,9 +517,6 @@ async def list_devs_handler(event):
 @events.register(events.NewMessage(pattern=r'^[/\+]clearcache(?:\s+(all|chat|user))?$'))
 async def clear_cache_handler(event):
     """Clear role cache - /clearcache [all|chat|user] (Founder only)"""
-
-    if not event.out:
-        return
 
     try:
         bot_instance = event.client._bot_instance
