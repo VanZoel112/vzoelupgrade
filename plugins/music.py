@@ -38,6 +38,8 @@ class MusicPlayer:
         self.plugin_name = "Music Player"
         self.auth_manager = getattr(bot, "auth_manager", None)
         self._streaming_warning_chats = set()
+        self._developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
+        self._owner_id = getattr(config, "OWNER_ID", 0) or 0
 
         # Try to import branding
         try:
@@ -105,6 +107,10 @@ class MusicPlayer:
         except Exception:
             logger.warning("Failed to check admin privileges for music access", exc_info=True)
             return False
+        if user_id in self._developer_ids:
+            return True
+
+        return bool(self._owner_id) and user_id == self._owner_id
 
     async def check_music_available(self, event):
         """Check if music manager is available"""
@@ -146,6 +152,9 @@ class MusicPlayer:
                     "🎵 **VBot Music Player**\n\n"
                     "❌ Fitur musik hanya untuk developer/owner atau admin grup ini.\n\n"
                     "Silakan hubungi admin atau owner bot untuk akses."
+                    "🎵 **VBot Music Player**\\n\\n"
+                    "❌ Fitur musik hanya untuk developer atau owner.\\n\\n"
+                    "Silakan hubungi owner bot untuk akses."
                 )
             )
             return
@@ -374,6 +383,10 @@ class MusicPlayer:
         if not await self.has_music_access(event):
             await event.answer(
                 "❌ Hanya developer/owner atau admin grup yang bisa menggunakan kontrol musik",
+        # Check developer
+        if not self.is_developer(user_id):
+            await event.answer(
+                "❌ Hanya developer atau owner yang bisa menggunakan kontrol musik",
                 alert=True
             )
             return
