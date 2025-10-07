@@ -192,7 +192,11 @@ class VBot:
                     self.assistant_user = None
 
             # Initialize Music Manager
-            self.music_manager = MusicManager(self.client, self.assistant_client)
+            self.music_manager = MusicManager(
+                self.client,
+                self.assistant_client,
+                auth_manager=self.auth_manager,
+            )
             await self.music_manager.start()
 
             # Register handlers
