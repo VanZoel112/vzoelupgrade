@@ -27,6 +27,7 @@ from telethon.errors import (
     SessionPasswordNeededError,
     FloodWaitError
 )
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +81,19 @@ class StringSessionHandler:
     async def handle_gensession_command(self, event):
         """
         Handle /gensession command
-        Blocks in groups unless explicitly enabled
+        Developer only - Blocks in groups unless explicitly enabled
         """
+        # Check if user is developer
+        user_id = event.sender_id
+        if user_id not in config.DEVELOPER_IDS:
+            await event.reply(
+                self.format_message(
+                    "❌ **Access Denied**\n\n"
+                    "Session generator hanya untuk developer."
+                )
+            )
+            return
+
         # Check if in group/channel
         if event.is_group or event.is_channel:
             allowed = await self.check_group_allowed(event)
@@ -109,7 +121,6 @@ class StringSessionHandler:
                 return
 
         # Check if already in progress
-        user_id = event.sender_id
         if user_id in generation_sessions:
             await event.reply(
                 self.format_message(
