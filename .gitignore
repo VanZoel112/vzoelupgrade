@@ -66,6 +66,11 @@ logs/*.log
 .DS_Store
 Thumbs.db
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # Temporary files
 *.tmp
 *.temp
