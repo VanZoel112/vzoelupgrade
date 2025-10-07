@@ -1,10 +1,10 @@
 """
 Music Plugin - Voice Chat Music Player
-Hanya untuk developer, auto pakai assistant account untuk streaming
+Hanya untuk developer/owner dan admin grup, auto pakai assistant account untuk streaming
 
 Commands:
-    /play <query> - Play audio (developer only)
-    /vplay <query> - Play video (developer only)
+    /play <query> - Play audio (developer/owner atau admin grup)
+    /vplay <query> - Play video (developer/owner atau admin grup)
     /pause - Pause current song
     /resume - Resume paused song
     /skip - Skip to next song
@@ -37,6 +37,7 @@ class MusicPlayer:
         self.music_manager = getattr(bot, "music_manager", None)
         self.plugin_name = "Music Player"
         self.auth_manager = getattr(bot, "auth_manager", None)
+        self._streaming_warning_chats = set()
         self._developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
         self._owner_id = getattr(config, "OWNER_ID", 0) or 0
 
@@ -70,6 +71,42 @@ class MusicPlayer:
             if self.auth_manager.is_developer(user_id) or self.auth_manager.is_owner(user_id):
                 return True
 
+        developer_ids = getattr(config, "DEVELOPER_IDS", []) or []
+        if user_id in developer_ids:
+            return True
+
+        owner_id = getattr(config, "OWNER_ID", 0) or 0
+        return bool(owner_id) and user_id == owner_id
+
+    async def has_music_access(self, event) -> bool:
+        """Return True if the event sender may control music in this chat."""
+        user_id = event.sender_id
+
+        client = getattr(event, "client", None) or self.client
+
+        chat_id = getattr(event, "chat_id", None)
+        if chat_id is None or client is None:
+            return False
+
+        if self.music_manager and hasattr(self.music_manager, "user_has_access"):
+            try:
+                return await self.music_manager.user_has_access(chat_id, user_id, client)
+            except Exception:
+                logger.warning(
+                    "Music manager access check failed, falling back to plugin auth", exc_info=True
+                )
+
+        if not self.auth_manager:
+            return self.is_developer(user_id)
+
+        if self.is_developer(user_id):
+            return True
+
+        try:
+            return await self.auth_manager.is_admin_in_chat(client, user_id, chat_id)
+        except Exception:
+            logger.warning("Failed to check admin privileges for music access", exc_info=True)
+            return False
         if user_id in self._developer_ids:
             return True
 
@@ -87,16 +124,20 @@ class MusicPlayer:
             return False
 
         if not self.music_manager.streaming_available:
-            await event.reply(
-                self.format_message(
-                    "❌ **Streaming tidak tersedia**\\n\\n"
-                    "Pastikan:"
-                    "\\n• STRING_SESSION sudah diisi di .env"
-                    "\\n• py-tgcalls sudah terinstall"
-                    "\\n• Assistant account sudah login"
+            chat_id = event.chat_id
+            if chat_id not in self._streaming_warning_chats:
+                self._streaming_warning_chats.add(chat_id)
+                await event.reply(
+                    self.format_message(
+                        "ℹ️ **Streaming tidak tersedia**\\n\\n"
+                        "Bot akan menggunakan mode unduhan sehingga musik masih bisa diputar."
+                        "\\n\\nUntuk mengaktifkan streaming langsung, pastikan:"
+                        "\\n• STRING_SESSION sudah diisi di .env"
+                        "\\n• py-tgcalls sudah terinstall"
+                        "\\n• Assistant account sudah login"
+                    )
                 )
-            )
-            return False
+            return True
 
         return True
 
@@ -104,10 +145,13 @@ class MusicPlayer:
         """Handle /play and /vplay commands"""
         user_id = event.sender_id
 
-        # Check developer only
-        if not self.is_developer(user_id):
+        # Check permission for controlling music
+        if not await self.has_music_access(event):
             await event.reply(
                 self.format_message(
+                    "🎵 **VBot Music Player**\n\n"
+                    "❌ Fitur musik hanya untuk developer/owner atau admin grup ini.\n\n"
+                    "Silakan hubungi admin atau owner bot untuk akses."
                     "🎵 **VBot Music Player**\\n\\n"
                     "❌ Fitur musik hanya untuk developer atau owner.\\n\\n"
                     "Silakan hubungi owner bot untuk akses."
@@ -160,6 +204,17 @@ class MusicPlayer:
             await loading_msg.delete()
 
             if not result.get('success'):
+                error_code = result.get('error_code')
+                if error_code == 'not_authorized':
+                    await event.reply(
+                        self.format_message(
+                            "🎵 **VBot Music Player**\\n\\n"
+                            "❌ Fitur musik hanya untuk developer/owner atau admin grup ini.\\n\\n"
+                            "Silakan hubungi admin atau owner bot untuk akses."
+                        )
+                    )
+                    return
+
                 error = result.get('error', 'Unknown error')
                 await event.reply(
                     self.format_message(
@@ -238,7 +293,7 @@ class MusicPlayer:
 
     async def handle_pause(self, event):
         """Handle /pause command"""
-        if not self.is_developer(event.sender_id):
+        if not await self.has_music_access(event):
             return
 
         if not await self.check_music_available(event):
@@ -249,7 +304,7 @@ class MusicPlayer:
 
     async def handle_resume(self, event):
         """Handle /resume command"""
-        if not self.is_developer(event.sender_id):
+        if not await self.has_music_access(event):
             return
 
         if not await self.check_music_available(event):
@@ -260,7 +315,7 @@ class MusicPlayer:
 
     async def handle_skip(self, event):
         """Handle /skip command"""
-        if not self.is_developer(event.sender_id):
+        if not await self.has_music_access(event):
             return
 
         if not await self.check_music_available(event):
@@ -271,7 +326,7 @@ class MusicPlayer:
 
     async def handle_stop(self, event):
         """Handle /stop command"""
-        if not self.is_developer(event.sender_id):
+        if not await self.has_music_access(event):
             return
 
         if not await self.check_music_available(event):
@@ -282,7 +337,7 @@ class MusicPlayer:
 
     async def handle_queue(self, event):
         """Handle /queue command"""
-        if not self.is_developer(event.sender_id):
+        if not await self.has_music_access(event):
             return
 
         if not await self.check_music_available(event):
@@ -293,7 +348,7 @@ class MusicPlayer:
 
     async def handle_shuffle(self, event):
         """Handle /shuffle command"""
-        if not self.is_developer(event.sender_id):
+        if not await self.has_music_access(event):
             return
 
         if not await self.check_music_available(event):
@@ -304,7 +359,7 @@ class MusicPlayer:
 
     async def handle_loop(self, event):
         """Handle /loop command"""
-        if not self.is_developer(event.sender_id):
+        if not await self.has_music_access(event):
             return
 
         if not await self.check_music_available(event):
@@ -324,6 +379,10 @@ class MusicPlayer:
         user_id = event.sender_id
         chat_id = event.chat_id
 
+        # Check permission for inline controls
+        if not await self.has_music_access(event):
+            await event.answer(
+                "❌ Hanya developer/owner atau admin grup yang bisa menggunakan kontrol musik",
         # Check developer
         if not self.is_developer(user_id):
             await event.answer(
@@ -452,4 +511,4 @@ def setup(bot):
     if bot_client is not bot:
         setattr(bot_client, "music_player_handler", handler)
 
-    logger.info("✅ Music plugin loaded (developer only + assistant streaming)")
+    logger.info("✅ Music plugin loaded (developer/owner + group admin access)")

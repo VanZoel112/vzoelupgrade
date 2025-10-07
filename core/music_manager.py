@@ -10,7 +10,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 from pathlib import Path
 import config
 
@@ -43,15 +43,22 @@ except ImportError:
 class MusicManager:
     """Music manager with voice chat streaming support"""
 
-    def __init__(self, bot_client, assistant_client=None):
+    def __init__(self, bot_client, assistant_client=None, auth_manager=None):
         self.bot_client = bot_client  # For sending messages
         self.assistant_client = assistant_client  # For voice chat streaming
+        self.auth_manager = auth_manager
         self.download_path = Path(config.DOWNLOAD_PATH)
         self.download_path.mkdir(exist_ok=True)
 
         # PyTgCalls instance
         self.pytgcalls = None
         self.streaming_available = PYTGCALLS_AVAILABLE and assistant_client is not None
+
+        # Authorization caches & fallbacks
+        self._developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
+        self._owner_id = getattr(config, "OWNER_ID", 0) or 0
+        self._access_cache: Dict[Tuple[int, int], Tuple[bool, float]] = {}
+        self._access_cache_ttl = getattr(config, "MUSIC_ACCESS_CACHE_TTL", 120)
 
         # Queue per chat
         self.queues: Dict[int, List[Dict]] = {}
@@ -99,6 +106,87 @@ class MusicManager:
                 self.streaming_available = False
                 self.pytgcalls = None
         return True
+
+    # ------------------------------------------------------------------
+    # Authorization helpers
+    # ------------------------------------------------------------------
+
+    def _is_configured_developer(self, user_id: Optional[int]) -> bool:
+        if not user_id:
+            return False
+
+        if self.auth_manager:
+            if self.auth_manager.is_developer(user_id) or self.auth_manager.is_owner(user_id):
+                return True
+
+        if user_id in self._developer_ids:
+            return True
+
+        return bool(self._owner_id) and user_id == self._owner_id
+
+    async def user_has_access(
+        self,
+        chat_id: Optional[int],
+        user_id: Optional[int],
+        client=None,
+        *,
+        use_cache: bool = True,
+    ) -> bool:
+        """Determine whether a user can control music in the given chat."""
+
+        if not user_id or not chat_id:
+            return False
+
+        if self._is_configured_developer(user_id):
+            return True
+
+        cache_key = (chat_id, user_id)
+        current_time = time.time()
+        if use_cache and cache_key in self._access_cache:
+            cached_allowed, cached_ts = self._access_cache[cache_key]
+            if current_time - cached_ts < self._access_cache_ttl:
+                return cached_allowed
+
+        client = client or self.bot_client
+        if client is None:
+            return False
+
+        allowed = False
+        if self.auth_manager:
+            try:
+                allowed = await self.auth_manager.is_admin_in_chat(client, user_id, chat_id)
+            except Exception:
+                logger.warning("MusicManager failed to query AuthManager admin status", exc_info=True)
+        else:
+            try:
+                perms = await client.get_permissions(chat_id, user_id)
+            except Exception:
+                logger.debug("MusicManager could not fetch chat permissions", exc_info=True)
+            else:
+                allowed = bool(getattr(perms, "is_admin", False) or getattr(perms, "is_creator", False))
+
+        if use_cache:
+            self._access_cache[cache_key] = (allowed, current_time)
+
+        return allowed
+
+    def clear_access_cache(self, chat_id: Optional[int] = None, user_id: Optional[int] = None):
+        """Invalidate cached authorization decisions."""
+
+        if chat_id is None and user_id is None:
+            self._access_cache.clear()
+            return
+
+        keys_to_remove = []
+        for cached_chat_id, cached_user_id in self._access_cache:
+            if chat_id is not None and cached_chat_id != chat_id:
+                continue
+            if user_id is not None and cached_user_id != user_id:
+                continue
+            keys_to_remove.append((cached_chat_id, cached_user_id))
+
+        for key in keys_to_remove:
+            self._access_cache.pop(key, None)
 
     # ---------------------------------------------------------------------
     # Search & Download helpers
@@ -214,6 +302,17 @@ class MusicManager:
         Args:
             audio_only: If True, extract audio only (MP3). If False, keep video.
         """
+        has_access = await self.user_has_access(chat_id, requester_id)
+        if not has_access:
+            logger.info(
+                "Denied music control for user %s in chat %s", requester_id, chat_id
+            )
+            return {
+                'success': False,
+                'error': 'User is not permitted to control music in this chat',
+                'error_code': 'not_authorized',
+            }
+
         # Rate limiting
         current_time = time.time()
         if requester_id in self.last_request:
