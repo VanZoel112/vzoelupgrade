@@ -36,6 +36,9 @@ class MusicPlayer:
         self.client = getattr(bot, "client", None)
         self.music_manager = getattr(bot, "music_manager", None)
         self.plugin_name = "Music Player"
+        self.auth_manager = getattr(bot, "auth_manager", None)
+        self._developer_ids = set(getattr(config, "DEVELOPER_IDS", []) or [])
+        self._owner_id = getattr(config, "OWNER_ID", 0) or 0
 
         # Try to import branding
         try:
@@ -62,8 +65,15 @@ class MusicPlayer:
         return content
 
     def is_developer(self, user_id: int) -> bool:
-        """Check if user is developer"""
-        return user_id in config.DEVELOPER_IDS
+        """Check if user is allowed to control music features."""
+        if self.auth_manager:
+            if self.auth_manager.is_developer(user_id) or self.auth_manager.is_owner(user_id):
+                return True
+
+        if user_id in self._developer_ids:
+            return True
+
+        return bool(self._owner_id) and user_id == self._owner_id
 
     async def check_music_available(self, event):
         """Check if music manager is available"""
@@ -99,7 +109,7 @@ class MusicPlayer:
             await event.reply(
                 self.format_message(
                     "🎵 **VBot Music Player**\\n\\n"
-                    "❌ Fitur musik hanya untuk developer.\\n\\n"
+                    "❌ Fitur musik hanya untuk developer atau owner.\\n\\n"
                     "Silakan hubungi owner bot untuk akses."
                 )
             )
@@ -316,7 +326,10 @@ class MusicPlayer:
 
         # Check developer
         if not self.is_developer(user_id):
-            await event.answer("❌ Hanya developer yang bisa menggunakan kontrol musik", alert=True)
+            await event.answer(
+                "❌ Hanya developer atau owner yang bisa menggunakan kontrol musik",
+                alert=True
+            )
             return
 
         if data == "music_pause":
