@@ -113,7 +113,7 @@ class MusicPlayer:
         if not self.music_manager:
             await event.reply(
                 self.format_message(
-                    "❌ **Music Manager tidak tersedia**\\n\\n"
+                    "❌ **Music Manager tidak tersedia**\n\n"
                     "Pastikan assistant account sudah dikonfigurasi di .env"
                 )
             )
@@ -125,12 +125,12 @@ class MusicPlayer:
                 self._streaming_warning_chats.add(chat_id)
                 await event.reply(
                     self.format_message(
-                        "ℹ️ **Streaming tidak tersedia**\\n\\n"
+                        "ℹ️ **Streaming tidak tersedia**\n\n"
                         "Bot akan menggunakan mode unduhan sehingga musik masih bisa diputar."
-                        "\\n\\nUntuk mengaktifkan streaming langsung, pastikan:"
-                        "\\n• STRING_SESSION sudah diisi di .env"
-                        "\\n• py-tgcalls sudah terinstall"
-                        "\\n• Assistant account sudah login"
+                        "\n\nUntuk mengaktifkan streaming langsung, pastikan:"
+                        "\n• STRING_SESSION sudah diisi di .env"
+                        "\n• py-tgcalls sudah terinstall"
+                        "\n• Assistant account sudah login"
                     )
                 )
             return True
@@ -165,10 +165,10 @@ class MusicPlayer:
             cmd = parts[0]
             await event.reply(
                 self.format_message(
-                    f"❌ **Format salah!**\\n\\n"
-                    f"Penggunaan: {cmd} <judul lagu atau URL>\\n\\n"
-                    f"Contoh:\\n"
-                    f"• {cmd} Shape of You\\n"
+                    f"❌ **Format salah!**\n\n"
+                    f"Penggunaan: {cmd} <judul lagu atau URL>\n\n"
+                    f"Contoh:\n"
+                    f"• {cmd} Shape of You\n"
                     f"• {cmd} https://youtube.com/watch?v=...",
                     include_footer=False
                 )
@@ -182,7 +182,7 @@ class MusicPlayer:
         media_label = "audio" if audio_only else "video"
         loading_msg = await event.reply(
             self.format_message(
-                f"⏳ **Mencari {media_label}...**\\n\\n"
+                f"⏳ **Mencari {media_label}...**\n\n"
                 f"Query: {query[:50]}",
                 include_footer=False
             )
@@ -201,8 +201,8 @@ class MusicPlayer:
                 if error_code == 'not_authorized':
                     await event.reply(
                         self.format_message(
-                            "🎵 **VBot Music Player**\\n\\n"
-                            "❌ Fitur musik hanya untuk developer/owner atau admin grup ini.\\n\\n"
+                            "🎵 **VBot Music Player**\n\n"
+                            "❌ Fitur musik hanya untuk developer/owner atau admin grup ini.\n\n"
                             "Silakan hubungi admin atau owner bot untuk akses."
                         )
                     )
@@ -211,7 +211,7 @@ class MusicPlayer:
                 error = result.get('error', 'Unknown error')
                 await event.reply(
                     self.format_message(
-                        f"❌ **Error**\\n\\n{error}"
+                        f"❌ **Error**\n\n{error}"
                     )
                 )
                 return
@@ -226,9 +226,9 @@ class MusicPlayer:
                 # Added to queue
                 position = result.get('position', 0)
                 message = (
-                    f"📝 **Added to Queue** (#{position})\\n\\n"
-                    f"**Title:** {title}\\n"
-                    f"**Duration:** {duration}\\n"
+                    f"📝 **Added to Queue** (#{position})\n\n"
+                    f"**Title:** {title}\n"
+                    f"**Duration:** {duration}\n"
                     f"**Uploader:** {uploader}"
                 )
             else:
@@ -236,11 +236,11 @@ class MusicPlayer:
                 streaming = result.get('streaming', False)
                 mode = "Streaming" if streaming else "Download"
                 emoji = "🎵" if audio_only else "🎬"
-                
+
                 message = (
-                    f"{emoji} **Now Playing** ({mode})\\n\\n"
-                    f"**Title:** {title}\\n"
-                    f"**Duration:** {duration}\\n"
+                    f"{emoji} **Now Playing** ({mode})\n\n"
+                    f"**Title:** {title}\n"
+                    f"**Duration:** {duration}\n"
                     f"**Uploader:** {uploader}"
                 )
 
