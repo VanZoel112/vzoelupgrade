@@ -382,11 +382,7 @@ class MusicPlayer:
         # Check permission for inline controls
         if not await self.has_music_access(event):
             await event.answer(
-                "❌ Hanya developer/owner atau admin grup yang bisa menggunakan kontrol musik",
-        # Check developer
-        if not self.is_developer(user_id):
-            await event.answer(
-                "❌ Hanya developer atau owner yang bisa menggunakan kontrol musik",
+                "Hanya developer/owner atau admin grup yang bisa menggunakan kontrol musik",
                 alert=True
             )
             return
