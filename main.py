@@ -171,7 +171,7 @@ class VBot:
             # Initialize Assistant Client (for voice chat streaming)
             if config.STRING_SESSION and config.STRING_SESSION.strip():
                 try:
-                    logger.info("🔄 Initializing assistant client for voice chat streaming...")
+                    print("🔄 Initializing assistant client for voice chat streaming...")
                     self.assistant_client = TelegramClient(
                         StringSession(config.STRING_SESSION),
                         config.API_ID,
@@ -187,7 +187,9 @@ class VBot:
                         )
                         self.assistant_user = None
                 except Exception as exc:
-                    logger.error(f"Failed to initialize assistant client: {exc}")
+                    print(f"❌ Failed to initialize assistant client: {exc}")
+                    import traceback
+                    traceback.print_exc()
                     self.assistant_client = None
                     self.assistant_user = None
 
