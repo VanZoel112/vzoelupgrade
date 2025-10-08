@@ -258,24 +258,11 @@ class MusicPlayer:
                 ]
             ]
 
-            # Send with thumbnail if available
-            if thumbnail and streaming:
-                try:
-                    await event.respond(
-                        self.format_message(message, include_footer=False),
-                        file=thumbnail,
-                        buttons=buttons
-                    )
-                except:
-                    await event.reply(
-                        self.format_message(message, include_footer=False),
-                        buttons=buttons
-                    )
-            else:
-                await event.reply(
-                    self.format_message(message, include_footer=False),
-                    buttons=buttons
-                )
+            # Send message without thumbnail (will add visualizer later)
+            await event.reply(
+                self.format_message(message, include_footer=False),
+                buttons=buttons
+            )
 
         except Exception as e:
             logger.error(f"Error in handle_play: {e}", exc_info=True)
