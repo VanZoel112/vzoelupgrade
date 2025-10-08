@@ -284,7 +284,12 @@ class MusicManager:
                 if not info:
                     return None
                 if "requested_downloads" in info and info["requested_downloads"]:
-                    return info["requested_downloads"][0]["filepath"]
+                    # Try different possible keys (yt-dlp versions use different keys)
+                    download_info = info["requested_downloads"][0]
+                    # Try filepath first, then filename, then _filename
+                    for key in ['filepath', 'filename', '_filename']:
+                        if key in download_info:
+                            return download_info[key]
                 if "ext" in info and "id" in info:
                     return (self.download_path / f"{safe_prefix} - {info['id']}.{info['ext']}").as_posix()
                 return None
