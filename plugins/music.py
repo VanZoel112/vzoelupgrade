@@ -413,13 +413,23 @@ class MusicPlayer:
 
 def setup(bot):
     """Setup music plugin"""
+    print("DEBUG: Music plugin setup() called")
+
     # Use bot.client directly like other plugins
-    if not hasattr(bot, "client") or bot.client is None:
-        logger.warning("Music plugin skipped: bot has no client instance")
+    if not hasattr(bot, "client"):
+        print("DEBUG: bot has no 'client' attribute")
+        logger.warning("Music plugin skipped: bot has no client attribute")
         return
 
+    if bot.client is None:
+        print("DEBUG: bot.client is None")
+        logger.warning("Music plugin skipped: bot.client is None")
+        return
+
+    print("DEBUG: bot.client exists, creating handler")
     bot_client = bot.client
     handler = MusicPlayer(bot)
+    print("DEBUG: Handler created successfully")
 
     # Check which commands are already handled
     play_enabled = not bot.plugin_loader.handles_command("/play")
