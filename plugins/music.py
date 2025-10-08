@@ -413,11 +413,12 @@ class MusicPlayer:
 
 def setup(bot):
     """Setup music plugin"""
-    bot_client = getattr(bot, "client", bot)
-    if bot_client is None:
+    # Use bot.client directly like other plugins
+    if not hasattr(bot, "client") or bot.client is None:
         logger.warning("Music plugin skipped: bot has no client instance")
         return
 
+    bot_client = bot.client
     handler = MusicPlayer(bot)
 
     # Check which commands are already handled
@@ -504,7 +505,6 @@ def setup(bot):
 
     # Export handler
     setattr(bot, "music_player_handler", handler)
-    if bot_client is not bot:
-        setattr(bot_client, "music_player_handler", handler)
+    setattr(bot_client, "music_player_handler", handler)
 
-    logger.info("✅ Music plugin loaded (developer/owner + group admin access)")
+    print("✅ Music plugin loaded")
