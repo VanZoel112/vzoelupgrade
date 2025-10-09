@@ -10,7 +10,8 @@ from pathlib import Path
 async def get_file_id_handler(event):
     """Get file_id from replied media - /getfileid"""
 
-    if not event.out:
+    # Check if user is developer/owner
+    if event.sender_id not in config.DEVELOPER_IDS:
         return
 
     # Check if replying to a message
@@ -139,7 +140,8 @@ async def get_file_id_handler(event):
 async def set_logo_handler(event):
     """Set music logo - /setlogo [file_id] or reply to photo"""
 
-    if not event.out:
+    # Check if user is developer/owner
+    if event.sender_id not in config.DEVELOPER_IDS:
         return
 
     try:
